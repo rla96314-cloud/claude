@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 Kyto 심장 박동 측정기 -> OSC 전송기
 
