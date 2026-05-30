@@ -51,6 +51,25 @@ python organize.py ~/Downloads --recursive --apply
 python organize.py ~/Downloads --undo
 ```
 
+## 3) EXE(.exe)로 만들기 — Python 없이 더블클릭 실행
+
+> ⚠️ `.exe`는 **Windows에서 빌드**해야 합니다. (PyInstaller는 크로스 컴파일 불가)
+
+### 방법 A. GitHub Actions로 자동 빌드 (Windows PC 불필요, 추천)
+
+1. GitHub 저장소의 **Actions** 탭 → **Build Windows EXE** 워크플로 선택
+2. **Run workflow** 클릭 (또는 organize 파일을 푸시하면 자동 실행)
+3. 실행이 끝나면 하단 **Artifacts → `FileOrganizer-windows`** 를 다운로드
+4. 압축을 풀면 `FileOrganizer.exe`(GUI), `organize.exe`(CLI)가 들어 있습니다
+
+### 방법 B. 내 Windows PC에서 직접 빌드
+
+1. Python 3.9+ 설치 ([python.org](https://www.python.org))
+2. `build_exe.bat` **더블클릭**
+3. `dist\FileOrganizer.exe` 가 생성됩니다 (이 파일만 복사해 어디서나 실행 가능)
+
+> macOS/Linux 용 실행 파일은 `bash build_exe.sh` 로 만들 수 있습니다.
+
 ## 분류 종류
 
 | 폴더 | 포함 확장자(예시) |

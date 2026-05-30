@@ -1,0 +1,44 @@
+name: Build Windows EXE
+
+# Windows 클라우드 러너에서 .exe 를 빌드해 다운로드 가능한 아티팩트로 올립니다.
+# - Actions 탭에서 "Run workflow" 로 수동 실행하거나
+# - organize 관련 파일을 푸시하면 자동 실행됩니다.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - claude/magical-heisenberg-b5vic
+    paths:
+      - "organize*.py"
+      - ".github/workflows/build-exe.yml"
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: 소스 체크아웃
+        uses: actions/checkout@v4
+
+      - name: Python 설치
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: PyInstaller 설치
+        run: pip install pyinstaller
+
+      - name: GUI 버전 EXE 빌드
+        run: pyinstaller --onefile --windowed --name FileOrganizer organize_gui.py
+
+      - name: CLI 버전 EXE 빌드
+        run: pyinstaller --onefile --name organize organize.py
+
+      - name: 아티팩트 업로드
+        uses: actions/upload-artifact@v4
+        with:
+          name: FileOrganizer-windows
+          path: |
+            dist/FileOrganizer.exe
+            dist/organize.exe
+          if-no-files-found: error
