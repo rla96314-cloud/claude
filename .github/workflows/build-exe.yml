@@ -4,6 +4,10 @@ name: Build Windows EXE
 # - Actions 탭에서 "Run workflow" 로 수동 실행하거나
 # - organize 관련 파일을 푸시하면 자동 실행됩니다.
 
+# Node.js 20 액션 deprecation 경고 제거 (Node 24로 미리 전환)
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 on:
   workflow_dispatch:
   push:
