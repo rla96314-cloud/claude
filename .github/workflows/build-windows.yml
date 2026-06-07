@@ -33,6 +33,6 @@ jobs:
       - name: EXE 업로드 (아티팩트)
         uses: actions/upload-artifact@v4
         with:
-          name: YouTubeDownloader-windows
+          name: YouTubeDownloader
           path: dist/YouTubeDownloader.exe
           if-no-files-found: error

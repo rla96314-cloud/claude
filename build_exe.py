@@ -18,6 +18,13 @@ import os
 import sys
 import PyInstaller.__main__
 
+# Windows 콘솔(cp1252 등)에서도 출력이 깨지거나 멈추지 않도록 UTF-8 로 강제
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCRIPT = os.path.join(HERE, "youtube_downloader.py")
 
@@ -38,13 +45,13 @@ def main():
     if os.path.exists(ffmpeg_path):
         sep = ";" if os.name == "nt" else ":"
         args.append(f"--add-binary={ffmpeg_path}{sep}.")
-        print(f"[build] ffmpeg 포함: {ffmpeg_path}")
+        print(f"[build] bundling ffmpeg: {ffmpeg_path}")
     else:
-        print("[build] ffmpeg 미포함 (시스템 PATH 의 ffmpeg 를 사용하거나 단일 파일 모드 이용)")
+        print("[build] ffmpeg not bundled (uses system PATH ffmpeg, or single-file mode)")
 
-    print("[build] PyInstaller 실행:", " ".join(args))
+    print("[build] running PyInstaller:", " ".join(args))
     PyInstaller.__main__.run(args)
-    print("\n[build] 완료! dist/ 폴더의 실행파일을 확인하세요.")
+    print("\n[build] done! Check the executable in the dist/ folder.")
 
 
 if __name__ == "__main__":
