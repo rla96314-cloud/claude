@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-YouTube Downloader - 단독 실행형 GUI 다운로더
+YouTube Downloader - 단독 실행형 GUI 다운로더 (모던 UI / CustomTkinter)
 
 - 별도의 서버가 필요 없습니다. yt-dlp 라이브러리를 직접 호출합니다.
-- tkinter 기반 GUI (파이썬 표준 라이브러리).
+- CustomTkinter 기반의 모던 GUI (둥근 카드 / 컬러 버튼).
 - PyInstaller 로 단일 실행파일(.exe / 바이너리)로 빌드할 수 있습니다.
 
 필요 패키지:
-    pip install yt-dlp
+    pip install yt-dlp customtkinter
 
 (선택) 고화질 영상+오디오 병합 및 mp3 변환에는 ffmpeg 가 필요합니다.
 ffmpeg 가 없으면 단일 포맷(병합 불필요) 다운로드만 사용됩니다.
@@ -17,10 +17,11 @@ import os
 import sys
 import threading
 import queue
-import shutil
 
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
+from tkinter import filedialog, messagebox
+
+import customtkinter as ctk
 
 try:
     import yt_dlp
@@ -30,32 +31,42 @@ except ImportError:
 
 APP_TITLE = "YouTube Downloader"
 
+# ----- 색상 팔레트 (목업 기준) -------------------------------------------------
+BG = "#EAF1FB"           # 창 배경 (연한 블루)
+CARD = "#FFFFFF"         # 카드 배경
+HEADING = "#1F2A37"      # 제목 텍스트
+SUBTLE = "#9AA7B8"       # 보조/플레이스홀더 텍스트
+ACCENT = "#3B82F6"       # 파란 강조색 (버튼)
+ACCENT_HOVER = "#2563EB"
+BORDER = "#E3E8F0"
 
-def ffmpeg_dir() -> str | None:
-    """번들된 ffmpeg 가 들어 있는 폴더 경로를 반환합니다 (없으면 None).
 
-    PyInstaller onefile 빌드에서는 내장 ffmpeg 가 임시폴더(sys._MEIPASS)에
-    풀리므로, 그 경로를 yt-dlp 에 ffmpeg_location 으로 넘겨줘야 인식됩니다.
-    """
+def ffmpeg_dir():
+    """번들된 ffmpeg 가 들어 있는 폴더 경로를 반환합니다 (없으면 None)."""
     exe = "ffmpeg.exe" if os.name == "nt" else "ffmpeg"
-    # 1) PyInstaller 로 묶인 ffmpeg (실행 시 _MEIPASS 에 풀림)
     meipass = getattr(sys, "_MEIPASS", None)
     if meipass and os.path.exists(os.path.join(meipass, exe)):
         return meipass
-    # 2) 스크립트/실행파일과 같은 폴더에 둔 ffmpeg
     here = os.path.dirname(os.path.abspath(__file__))
     if os.path.exists(os.path.join(here, exe)):
         return here
     return None
 
 
-def has_ffmpeg() -> bool:
+def has_ffmpeg():
     """시스템 PATH, 내장 번들, 또는 같은 폴더에서 ffmpeg 를 찾습니다."""
+    import shutil
     return shutil.which("ffmpeg") is not None or ffmpeg_dir() is not None
 
 
-class DownloaderApp(tk.Tk):
-    """tkinter 기반 메인 윈도우."""
+def resource_path(name):
+    """번들/소스 모두에서 리소스 파일 경로를 찾습니다."""
+    base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base, name)
+
+
+class DownloaderApp(ctk.CTk):
+    """CustomTkinter 기반 메인 윈도우."""
 
     # (라벨, yt-dlp format 문자열, ffmpeg 필요 여부)
     FORMAT_PRESETS = [
@@ -68,14 +79,29 @@ class DownloaderApp(tk.Tk):
 
     def __init__(self):
         super().__init__()
+        ctk.set_appearance_mode("light")
+        ctk.set_default_color_theme("blue")
+
         self.title(APP_TITLE)
-        self.geometry("680x540")
-        self.minsize(620, 500)
+        self.geometry("760x720")
+        self.minsize(680, 640)
+        self.configure(fg_color=BG)
         self._set_window_icon()
 
-        self.msg_queue: "queue.Queue" = queue.Queue()
+        # 한글 폰트 (Windows 의 맑은 고딕, 없으면 기본)
+        self.font_title = ctk.CTkFont(family="Malgun Gothic", size=15, weight="bold")
+        self.font_label = ctk.CTkFont(family="Malgun Gothic", size=13)
+        self.font_body = ctk.CTkFont(family="Malgun Gothic", size=13)
+        self.font_btn = ctk.CTkFont(family="Malgun Gothic", size=14, weight="bold")
+
+        self.msg_queue = queue.Queue()
         self.download_thread = None
         self.cancel_flag = threading.Event()
+        self.format_var = tk.StringVar(value=self.FORMAT_PRESETS[0][0])
+        self.allow_av1_var = tk.BooleanVar(value=False)
+        self.folder_var = tk.StringVar(
+            value=os.path.join(os.path.expanduser("~"), "Downloads")
+        )
 
         self._build_ui()
         self.after(100, self._poll_queue)
@@ -88,98 +114,182 @@ class DownloaderApp(tk.Tk):
             )
 
     def _set_window_icon(self):
-        """창/작업표시줄 아이콘 설정 (icon.ico 우선, 없으면 icon.png)."""
-        base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
-        ico = os.path.join(base, "icon.ico")
-        png = os.path.join(base, "icon.png")
         try:
+            ico = resource_path("icon.ico")
+            png = resource_path("icon.png")
             if os.name == "nt" and os.path.exists(ico):
                 self.iconbitmap(ico)
             elif os.path.exists(png):
                 self._icon_img = tk.PhotoImage(file=png)
                 self.iconphoto(True, self._icon_img)
         except Exception:
-            pass  # 아이콘이 없어도 앱은 정상 동작
+            pass
+
+    # --------------------------------------------------------------- helpers --
+    def _card(self, parent):
+        """둥근 흰색 카드 프레임."""
+        return ctk.CTkFrame(parent, fg_color=CARD, corner_radius=16,
+                            border_width=1, border_color=BORDER)
+
+    def _heading(self, parent, icon, text):
+        row = ctk.CTkFrame(parent, fg_color="transparent")
+        ctk.CTkLabel(row, text=icon, font=ctk.CTkFont(size=18)).pack(side="left")
+        ctk.CTkLabel(row, text="  " + text, font=self.font_title,
+                     text_color=HEADING).pack(side="left")
+        return row
 
     # ------------------------------------------------------------------ UI --
     def _build_ui(self):
-        pad = {"padx": 10, "pady": 6}
+        outer = ctk.CTkFrame(self, fg_color="transparent")
+        outer.pack(fill="both", expand=True, padx=18, pady=14)
 
-        # URL 입력
-        url_frame = ttk.LabelFrame(self, text="동영상 URL (여러 개는 줄바꿈으로 구분)")
-        url_frame.pack(fill="x", **pad)
-        self.url_text = tk.Text(url_frame, height=4, wrap="word")
-        self.url_text.pack(fill="x", padx=8, pady=8)
+        # ===== 카드 1: URL =====
+        card_url = self._card(outer)
+        card_url.pack(fill="x", pady=(0, 14))
+        head = self._heading(card_url, "🔗", "동영상 URL (여러 개는 줄바꿈으로 구분)")
+        head.pack(fill="x", padx=18, pady=(14, 0))
+        # 우측 도움말 버튼
+        ctk.CTkButton(head, text="?", width=30, height=30, corner_radius=15,
+                      fg_color="#EEF3FB", hover_color="#E0E8F5", text_color=SUBTLE,
+                      command=self._show_help).pack(side="right")
 
-        # 옵션
-        opt_frame = ttk.LabelFrame(self, text="옵션")
-        opt_frame.pack(fill="x", **pad)
+        self.url_text = ctk.CTkTextbox(card_url, height=92, font=self.font_body,
+                                       corner_radius=12, border_width=1,
+                                       border_color="#CFE0FB", fg_color="#FFFFFF",
+                                       text_color=HEADING)
+        self.url_text.pack(fill="x", padx=18, pady=(8, 16))
+        self._add_placeholder(self.url_text, "여기에 YouTube 동영상 URL을 입력하세요…")
+
+        # ===== 카드 2: 옵션 =====
+        card_opt = self._card(outer)
+        card_opt.pack(fill="x", pady=(0, 14))
+        self._heading(card_opt, "⚙️", "옵션").pack(fill="x", padx=18, pady=(14, 6))
+
+        grid = ctk.CTkFrame(card_opt, fg_color="transparent")
+        grid.pack(fill="x", padx=18, pady=(0, 16))
+        grid.columnconfigure(1, weight=1)
 
         # 저장 폴더
-        ttk.Label(opt_frame, text="저장 폴더:").grid(row=0, column=0, sticky="w", padx=8, pady=6)
-        self.folder_var = tk.StringVar(
-            value=os.path.join(os.path.expanduser("~"), "Downloads")
-        )
-        ttk.Entry(opt_frame, textvariable=self.folder_var).grid(
-            row=0, column=1, sticky="ew", padx=4, pady=6
-        )
-        ttk.Button(opt_frame, text="찾아보기…", command=self._choose_folder).grid(
-            row=0, column=2, padx=8, pady=6
-        )
+        ctk.CTkLabel(grid, text="📁  저장 폴더", font=self.font_label,
+                     text_color=HEADING).grid(row=0, column=0, sticky="w", pady=8, padx=(0, 12))
+        self.folder_entry = ctk.CTkEntry(grid, textvariable=self.folder_var,
+                                         font=self.font_body, height=40, corner_radius=10,
+                                         border_color=BORDER)
+        self.folder_entry.grid(row=0, column=1, sticky="ew", pady=8)
+        ctk.CTkButton(grid, text="📂  찾아보기…", width=130, height=40, corner_radius=10,
+                      font=self.font_label, fg_color="#FFFFFF", text_color=ACCENT,
+                      border_width=1, border_color="#CFE0FB", hover_color="#F0F5FF",
+                      command=self._choose_folder).grid(row=0, column=2, padx=(12, 0), pady=8)
 
-        # 포맷 선택
-        ttk.Label(opt_frame, text="화질/형식:").grid(row=1, column=0, sticky="w", padx=8, pady=6)
-        self.format_var = tk.StringVar(value=self.FORMAT_PRESETS[0][0])
-        self.format_combo = ttk.Combobox(
-            opt_frame,
-            textvariable=self.format_var,
+        # 화질/형식
+        ctk.CTkLabel(grid, text="🎬  화질/형식", font=self.font_label,
+                     text_color=HEADING).grid(row=1, column=0, sticky="w", pady=8, padx=(0, 12))
+        self.format_menu = ctk.CTkOptionMenu(
+            grid, variable=self.format_var,
             values=[p[0] for p in self.FORMAT_PRESETS],
-            state="readonly",
+            font=self.font_body, height=40, corner_radius=10,
+            fg_color="#FFFFFF", text_color=HEADING, button_color=ACCENT,
+            button_hover_color=ACCENT_HOVER,
         )
-        self.format_combo.grid(row=1, column=1, columnspan=2, sticky="ew", padx=4, pady=6)
+        self.format_menu.grid(row=1, column=1, columnspan=2, sticky="ew", pady=8)
 
-        # 기본은 H.264(MP4) 우선. 체크하면 AV1/VP9 허용(4K 등 초고화질, 호환성↓)
-        self.allow_av1_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(
-            opt_frame,
-            text="AV1/VP9 허용 (4K 등 초고화질 / 미체크 시 H.264 MP4 우선)",
-            variable=self.allow_av1_var,
-        ).grid(row=2, column=1, columnspan=2, sticky="w", padx=4, pady=(0, 6))
+        # AV1/VP9 체크
+        self.av1_check = ctk.CTkCheckBox(
+            grid, text="  AV1/VP9 허용 (4K 등 초고화질 / 미체크 시 H.264 MP4 우선)",
+            variable=self.allow_av1_var, font=self.font_body, text_color="#55606E",
+            fg_color=ACCENT, hover_color=ACCENT_HOVER, checkbox_width=20, checkbox_height=20,
+        )
+        self.av1_check.grid(row=2, column=1, columnspan=2, sticky="w", pady=(4, 2))
 
-        opt_frame.columnconfigure(1, weight=1)
-
-        # 버튼 (맨 아래에 먼저 고정 -> 내용이 많아도 절대 잘리지 않음)
-        btn_frame = ttk.Frame(self)
-        btn_frame.pack(side="bottom", fill="x", **pad)
-        self.download_btn = ttk.Button(btn_frame, text="다운로드 시작", command=self._start_download)
+        # ===== 하단 버튼 (맨 아래에 먼저 고정 -> 항상 보임) =====
+        btns = ctk.CTkFrame(outer, fg_color="transparent")
+        btns.pack(side="bottom", fill="x", pady=(14, 0))
+        self.download_btn = ctk.CTkButton(
+            btns, text="⬇   다운로드 시작", font=self.font_btn, height=52, width=200,
+            corner_radius=12, fg_color=ACCENT, hover_color=ACCENT_HOVER,
+            command=self._start_download,
+        )
         self.download_btn.pack(side="left")
-        self.cancel_btn = ttk.Button(
-            btn_frame, text="취소", command=self._cancel_download, state="disabled"
+        self.cancel_btn = ctk.CTkButton(
+            btns, text="✕   취소", font=self.font_btn, height=52, width=130,
+            corner_radius=12, fg_color="#FFFFFF", text_color="#55606E",
+            border_width=1, border_color=BORDER, hover_color="#F2F5FA",
+            command=self._cancel_download, state="disabled",
         )
-        self.cancel_btn.pack(side="left", padx=8)
+        self.cancel_btn.pack(side="left", padx=12)
 
-        # 진행 상태 (남는 공간을 채움)
-        prog_frame = ttk.LabelFrame(self, text="진행 상태")
-        prog_frame.pack(fill="both", expand=True, **pad)
+        # ===== 카드 3: 진행 상태 =====
+        card_prog = self._card(outer)
+        card_prog.pack(fill="both", expand=True)
+        self._heading(card_prog, "📈", "진행 상태").pack(fill="x", padx=18, pady=(14, 6))
 
-        self.progress = ttk.Progressbar(prog_frame, mode="determinate", maximum=100)
-        self.progress.pack(fill="x", padx=8, pady=(8, 4))
+        prow = ctk.CTkFrame(card_prog, fg_color="transparent")
+        prow.pack(fill="x", padx=18)
+        self.progress = ctk.CTkProgressBar(prow, height=10, corner_radius=6,
+                                           progress_color=ACCENT)
+        self.progress.pack(side="left", fill="x", expand=True)
+        self.progress.set(0)
+        self.pct_label = ctk.CTkLabel(prow, text="0%", font=self.font_label,
+                                      text_color=ACCENT, width=44)
+        self.pct_label.pack(side="right", padx=(10, 0))
 
-        self.status_var = tk.StringVar(value="대기 중")
-        ttk.Label(prog_frame, textvariable=self.status_var).pack(anchor="w", padx=8)
+        self.status_label = ctk.CTkLabel(card_prog, text="대기 중", font=self.font_body,
+                                         text_color=SUBTLE, anchor="w")
+        self.status_label.pack(fill="x", padx=18, pady=(8, 4))
 
-        self.log_text = tk.Text(prog_frame, height=7, state="disabled", wrap="word")
-        self.log_text.pack(fill="both", expand=True, padx=8, pady=8)
+        self.log_text = ctk.CTkTextbox(card_prog, font=self.font_body, corner_radius=12,
+                                       border_width=1, border_color=BORDER,
+                                       fg_color="#FFFFFF", text_color="#55606E")
+        self.log_text.pack(fill="both", expand=True, padx=18, pady=(0, 16))
+        self._add_placeholder(self.log_text, "진행 상태가 여기에 표시됩니다…")
 
         if not has_ffmpeg():
-            self._log(
-                "⚠ ffmpeg 를 찾지 못했습니다. 고화질 병합/MP3 변환이 제한됩니다.\n"
-                "   '단일 파일' 옵션을 사용하거나 ffmpeg 를 설치하세요."
-            )
+            self._log("⚠ ffmpeg 를 찾지 못했습니다. 고화질 병합/MP3 변환이 제한됩니다.")
+
+    # --------------------------------------------------- placeholder 처리 ----
+    def _add_placeholder(self, textbox, text):
+        """CTkTextbox 에 간단한 플레이스홀더를 구현합니다."""
+        textbox._ph_text = text
+        textbox._ph_active = True
+        textbox.insert("1.0", text)
+        textbox.configure(text_color=SUBTLE)
+
+        def on_focus_in(_):
+            if getattr(textbox, "_ph_active", False):
+                textbox.delete("1.0", "end")
+                textbox.configure(text_color=HEADING)
+                textbox._ph_active = False
+
+        def on_focus_out(_):
+            if not textbox.get("1.0", "end").strip():
+                textbox.insert("1.0", textbox._ph_text)
+                textbox.configure(text_color=SUBTLE)
+                textbox._ph_active = True
+
+        textbox.bind("<FocusIn>", on_focus_in)
+        textbox.bind("<FocusOut>", on_focus_out)
+
+    def _textbox_value(self, textbox):
+        if getattr(textbox, "_ph_active", False):
+            return ""
+        return textbox.get("1.0", "end")
+
+    def _show_help(self):
+        messagebox.showinfo(
+            APP_TITLE,
+            "사용법\n\n"
+            "1) 동영상 URL 을 입력합니다 (여러 개는 줄바꿈으로 구분).\n"
+            "2) 저장 폴더와 화질/형식을 선택합니다.\n"
+            "3) [다운로드 시작] 을 누릅니다.\n\n"
+            "• 기본은 H.264(MP4) 우선이라 호환성이 좋습니다 (보통 최대 1080p).\n"
+            "• 4K 등 초고화질이 필요하면 'AV1/VP9 허용' 을 체크하세요.\n"
+            "• '음성만 (MP3)' 으로 오디오만 추출할 수 있습니다.",
+        )
 
     # ------------------------------------------------------------- handlers --
     def _choose_folder(self):
-        folder = filedialog.askdirectory(initialdir=self.folder_var.get() or os.path.expanduser("~"))
+        folder = filedialog.askdirectory(
+            initialdir=self.folder_var.get() or os.path.expanduser("~"))
         if folder:
             self.folder_var.set(folder)
 
@@ -188,7 +298,7 @@ class DownloaderApp(tk.Tk):
             messagebox.showerror(APP_TITLE, "yt-dlp 가 설치되어 있지 않습니다.")
             return
 
-        urls = [u.strip() for u in self.url_text.get("1.0", "end").splitlines() if u.strip()]
+        urls = [u.strip() for u in self._textbox_value(self.url_text).splitlines() if u.strip()]
         if not urls:
             messagebox.showwarning(APP_TITLE, "다운로드할 URL 을 입력하세요.")
             return
@@ -203,9 +313,10 @@ class DownloaderApp(tk.Tk):
         prefer_h264 = not self.allow_av1_var.get()
 
         self.cancel_flag.clear()
-        self.download_btn.config(state="disabled")
-        self.cancel_btn.config(state="normal")
-        self.progress.config(value=0)
+        self.download_btn.configure(state="disabled")
+        self.cancel_btn.configure(state="normal")
+        self.progress.set(0)
+        self.pct_label.configure(text="0%")
         self._clear_log()
 
         self.download_thread = threading.Thread(
@@ -217,7 +328,7 @@ class DownloaderApp(tk.Tk):
 
     def _cancel_download(self):
         self.cancel_flag.set()
-        self.status_var.set("취소 요청됨… 현재 항목 종료 후 중단합니다.")
+        self.status_label.configure(text="취소 요청됨… 현재 항목 종료 후 중단합니다.")
 
     # ------------------------------------------------------------- worker ----
     def _download_worker(self, urls, folder, preset, prefer_h264=True):
@@ -259,16 +370,11 @@ class DownloaderApp(tk.Tk):
             "no_warnings": True,
         }
 
-        # H.264 우선(기본): yt-dlp 가 avc1(H.264) 코덱을 먼저 고르도록 정렬하고
-        # mp4 컨테이너로 병합. 유튜브 H.264 는 보통 최대 1080p 이므로 그 이상은
-        # 자동으로 AV1/VP9 로 떨어진다. 음성만 모드에는 적용하지 않는다.
         if prefer_h264 and not is_audio:
             ydl_opts["format_sort"] = ["vcodec:h264", "acodec:aac"]
             if ffmpeg_ok:
                 ydl_opts["merge_output_format"] = "mp4"
 
-        # 내장(또는 같은 폴더) ffmpeg 가 있으면 그 위치를 yt-dlp 에 알려준다.
-        # onefile 빌드에서는 PATH 에 없으므로 이 설정이 있어야 병합/변환이 동작한다.
         _ff = ffmpeg_dir()
         if _ff:
             ydl_opts["ffmpeg_location"] = _ff
@@ -324,16 +430,18 @@ class DownloaderApp(tk.Tk):
             while True:
                 kind, payload = self.msg_queue.get_nowait()
                 if kind == "progress":
-                    self.progress.config(value=payload)
+                    self.progress.set(payload / 100)
+                    self.pct_label.configure(text=f"{int(payload)}%")
                 elif kind == "status":
-                    self.status_var.set(payload)
+                    self.status_label.configure(text=payload)
                 elif kind == "log":
                     self._log(payload)
                 elif kind == "done":
-                    self.status_var.set(payload)
-                    self.progress.config(value=0)
-                    self.download_btn.config(state="normal")
-                    self.cancel_btn.config(state="disabled")
+                    self.status_label.configure(text=payload)
+                    self.progress.set(0)
+                    self.pct_label.configure(text="0%")
+                    self.download_btn.configure(state="normal")
+                    self.cancel_btn.configure(state="disabled")
                     self._log("─" * 40)
                     self._log(payload)
         except queue.Empty:
@@ -341,15 +449,17 @@ class DownloaderApp(tk.Tk):
         self.after(100, self._poll_queue)
 
     def _log(self, text):
-        self.log_text.config(state="normal")
+        # 로그 첫 입력 시 플레이스홀더 제거
+        if getattr(self.log_text, "_ph_active", False):
+            self.log_text.delete("1.0", "end")
+            self.log_text.configure(text_color="#55606E")
+            self.log_text._ph_active = False
         self.log_text.insert("end", text + "\n")
         self.log_text.see("end")
-        self.log_text.config(state="disabled")
 
     def _clear_log(self):
-        self.log_text.config(state="normal")
         self.log_text.delete("1.0", "end")
-        self.log_text.config(state="disabled")
+        self.log_text._ph_active = False
 
 
 def main():

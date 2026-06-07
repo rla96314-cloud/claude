@@ -1,3 +1,4 @@
 yt-dlp>=2024.1.0
+customtkinter>=5.2.2
 # 실행파일 빌드용 (개발 시에만 필요)
 pyinstaller>=6.0

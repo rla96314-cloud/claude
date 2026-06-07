@@ -37,6 +37,9 @@ def main():
         "--noconsole",     # GUI 앱 (콘솔 창 숨김)
         "--clean",
         "--noconfirm",
+        # CustomTkinter 의 테마/폰트 리소스를 실행파일에 포함
+        "--collect-all=customtkinter",
+        "--collect-all=darkdetect",
     ]
 
     # 앱 아이콘 (.exe 아이콘 + 창 아이콘으로 사용)
