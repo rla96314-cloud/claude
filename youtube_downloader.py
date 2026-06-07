@@ -138,6 +138,14 @@ class DownloaderApp(tk.Tk):
         )
         self.format_combo.grid(row=1, column=1, columnspan=2, sticky="ew", padx=4, pady=6)
 
+        # 기본은 H.264(MP4) 우선. 체크하면 AV1/VP9 허용(4K 등 초고화질, 호환성↓)
+        self.allow_av1_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            opt_frame,
+            text="AV1/VP9 허용 (4K 등 초고화질 / 미체크 시 H.264 MP4 우선)",
+            variable=self.allow_av1_var,
+        ).grid(row=2, column=1, columnspan=2, sticky="w", padx=4, pady=(0, 6))
+
         opt_frame.columnconfigure(1, weight=1)
 
         # 진행 상태
@@ -192,6 +200,7 @@ class DownloaderApp(tk.Tk):
         os.makedirs(folder, exist_ok=True)
 
         preset = next(p for p in self.FORMAT_PRESETS if p[0] == self.format_var.get())
+        prefer_h264 = not self.allow_av1_var.get()
 
         self.cancel_flag.clear()
         self.download_btn.config(state="disabled")
@@ -200,7 +209,9 @@ class DownloaderApp(tk.Tk):
         self._clear_log()
 
         self.download_thread = threading.Thread(
-            target=self._download_worker, args=(urls, folder, preset), daemon=True
+            target=self._download_worker,
+            args=(urls, folder, preset, prefer_h264),
+            daemon=True,
         )
         self.download_thread.start()
 
@@ -209,7 +220,7 @@ class DownloaderApp(tk.Tk):
         self.status_var.set("취소 요청됨… 현재 항목 종료 후 중단합니다.")
 
     # ------------------------------------------------------------- worker ----
-    def _download_worker(self, urls, folder, preset):
+    def _download_worker(self, urls, folder, preset, prefer_h264=True):
         label, fmt, needs_ffmpeg = preset
         is_audio = "음성만" in label
         ffmpeg_ok = has_ffmpeg()
@@ -248,6 +259,14 @@ class DownloaderApp(tk.Tk):
             "no_warnings": True,
         }
 
+        # H.264 우선(기본): yt-dlp 가 avc1(H.264) 코덱을 먼저 고르도록 정렬하고
+        # mp4 컨테이너로 병합. 유튜브 H.264 는 보통 최대 1080p 이므로 그 이상은
+        # 자동으로 AV1/VP9 로 떨어진다. 음성만 모드에는 적용하지 않는다.
+        if prefer_h264 and not is_audio:
+            ydl_opts["format_sort"] = ["vcodec:h264", "acodec:aac"]
+            if ffmpeg_ok:
+                ydl_opts["merge_output_format"] = "mp4"
+
         # 내장(또는 같은 폴더) ffmpeg 가 있으면 그 위치를 yt-dlp 에 알려준다.
         # onefile 빌드에서는 PATH 에 없으므로 이 설정이 있어야 병합/변환이 동작한다.
         _ff = ffmpeg_dir()
@@ -262,6 +281,10 @@ class DownloaderApp(tk.Tk):
                     "preferredquality": "192",
                 }
             ]
+
+        if not is_audio:
+            mode = "H.264(MP4) 우선" if prefer_h264 else "AV1/VP9 허용(최고화질)"
+            self.msg_queue.put(("log", f"코덱: {mode}"))
 
         total_count = len(urls)
         success = 0
