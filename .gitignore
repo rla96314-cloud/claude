@@ -9,3 +9,11 @@ venv/
 build/
 dist/
 *.spec
+
+# 번들용 ffmpeg 바이너리 (빌드 시 내려받음)
+ffmpeg
+ffmpeg.exe
+ffprobe
+ffprobe.exe
+ffmpeg.zip
+ffmpeg_tmp/

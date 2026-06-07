@@ -27,6 +27,19 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements-youtube.txt
 
+      - name: ffmpeg 다운로드 (실행파일에 내장)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $url = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
+          Write-Host "Downloading ffmpeg from $url"
+          Invoke-WebRequest -Uri $url -OutFile ffmpeg.zip
+          Expand-Archive -Path ffmpeg.zip -DestinationPath ffmpeg_tmp -Force
+          # 압축 안의 bin/ffmpeg.exe, ffprobe.exe 를 저장소 루트로 복사 -> build_exe.py 가 자동 번들
+          Copy-Item (Get-ChildItem -Recurse ffmpeg_tmp -Filter ffmpeg.exe  | Select-Object -First 1).FullName -Destination ffmpeg.exe  -Force
+          Copy-Item (Get-ChildItem -Recurse ffmpeg_tmp -Filter ffprobe.exe | Select-Object -First 1).FullName -Destination ffprobe.exe -Force
+          Get-Item ffmpeg.exe, ffprobe.exe | Format-Table Name, Length
+
       - name: 실행파일 빌드
         run: python build_exe.py
 

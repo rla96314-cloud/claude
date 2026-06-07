@@ -31,14 +31,27 @@ except ImportError:
 APP_TITLE = "YouTube Downloader"
 
 
-def has_ffmpeg() -> bool:
-    """시스템 PATH 또는 실행파일과 같은 폴더에서 ffmpeg 를 찾습니다."""
-    if shutil.which("ffmpeg"):
-        return True
-    # PyInstaller 로 묶었을 때 실행파일 옆에 둔 ffmpeg 도 확인
-    base = os.path.dirname(getattr(sys, "_MEIPASS", os.path.abspath(__file__)))
+def ffmpeg_dir() -> str | None:
+    """번들된 ffmpeg 가 들어 있는 폴더 경로를 반환합니다 (없으면 None).
+
+    PyInstaller onefile 빌드에서는 내장 ffmpeg 가 임시폴더(sys._MEIPASS)에
+    풀리므로, 그 경로를 yt-dlp 에 ffmpeg_location 으로 넘겨줘야 인식됩니다.
+    """
     exe = "ffmpeg.exe" if os.name == "nt" else "ffmpeg"
-    return os.path.exists(os.path.join(base, exe))
+    # 1) PyInstaller 로 묶인 ffmpeg (실행 시 _MEIPASS 에 풀림)
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass and os.path.exists(os.path.join(meipass, exe)):
+        return meipass
+    # 2) 스크립트/실행파일과 같은 폴더에 둔 ffmpeg
+    here = os.path.dirname(os.path.abspath(__file__))
+    if os.path.exists(os.path.join(here, exe)):
+        return here
+    return None
+
+
+def has_ffmpeg() -> bool:
+    """시스템 PATH, 내장 번들, 또는 같은 폴더에서 ffmpeg 를 찾습니다."""
+    return shutil.which("ffmpeg") is not None or ffmpeg_dir() is not None
 
 
 class DownloaderApp(tk.Tk):
@@ -219,6 +232,12 @@ class DownloaderApp(tk.Tk):
             "quiet": True,
             "no_warnings": True,
         }
+
+        # 내장(또는 같은 폴더) ffmpeg 가 있으면 그 위치를 yt-dlp 에 알려준다.
+        # onefile 빌드에서는 PATH 에 없으므로 이 설정이 있어야 병합/변환이 동작한다.
+        _ff = ffmpeg_dir()
+        if _ff:
+            ydl_opts["ffmpeg_location"] = _ff
 
         if is_audio and ffmpeg_ok:
             ydl_opts["postprocessors"] = [

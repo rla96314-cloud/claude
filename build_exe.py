@@ -39,14 +39,17 @@ def main():
         "--noconfirm",
     ]
 
-    # 같은 폴더에 ffmpeg 가 있으면 실행파일에 함께 번들
-    ffmpeg_name = "ffmpeg.exe" if os.name == "nt" else "ffmpeg"
-    ffmpeg_path = os.path.join(HERE, ffmpeg_name)
-    if os.path.exists(ffmpeg_path):
-        sep = ";" if os.name == "nt" else ":"
-        args.append(f"--add-binary={ffmpeg_path}{sep}.")
-        print(f"[build] bundling ffmpeg: {ffmpeg_path}")
-    else:
+    # 같은 폴더에 ffmpeg/ffprobe 가 있으면 실행파일에 함께 번들
+    sep = ";" if os.name == "nt" else ":"
+    exe_suffix = ".exe" if os.name == "nt" else ""
+    bundled_any = False
+    for tool in ("ffmpeg", "ffprobe"):
+        tool_path = os.path.join(HERE, tool + exe_suffix)
+        if os.path.exists(tool_path):
+            args.append(f"--add-binary={tool_path}{sep}.")
+            print(f"[build] bundling {tool}: {tool_path}")
+            bundled_any = True
+    if not bundled_any:
         print("[build] ffmpeg not bundled (uses system PATH ffmpeg, or single-file mode)")
 
     print("[build] running PyInstaller:", " ".join(args))
