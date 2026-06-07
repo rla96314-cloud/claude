@@ -69,8 +69,8 @@ class DownloaderApp(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title(APP_TITLE)
-        self.geometry("680x460")
-        self.minsize(620, 420)
+        self.geometry("680x540")
+        self.minsize(620, 500)
         self._set_window_icon()
 
         self.msg_queue: "queue.Queue" = queue.Queue()
@@ -148,7 +148,17 @@ class DownloaderApp(tk.Tk):
 
         opt_frame.columnconfigure(1, weight=1)
 
-        # 진행 상태
+        # 버튼 (맨 아래에 먼저 고정 -> 내용이 많아도 절대 잘리지 않음)
+        btn_frame = ttk.Frame(self)
+        btn_frame.pack(side="bottom", fill="x", **pad)
+        self.download_btn = ttk.Button(btn_frame, text="다운로드 시작", command=self._start_download)
+        self.download_btn.pack(side="left")
+        self.cancel_btn = ttk.Button(
+            btn_frame, text="취소", command=self._cancel_download, state="disabled"
+        )
+        self.cancel_btn.pack(side="left", padx=8)
+
+        # 진행 상태 (남는 공간을 채움)
         prog_frame = ttk.LabelFrame(self, text="진행 상태")
         prog_frame.pack(fill="both", expand=True, **pad)
 
@@ -158,18 +168,8 @@ class DownloaderApp(tk.Tk):
         self.status_var = tk.StringVar(value="대기 중")
         ttk.Label(prog_frame, textvariable=self.status_var).pack(anchor="w", padx=8)
 
-        self.log_text = tk.Text(prog_frame, height=8, state="disabled", wrap="word")
+        self.log_text = tk.Text(prog_frame, height=7, state="disabled", wrap="word")
         self.log_text.pack(fill="both", expand=True, padx=8, pady=8)
-
-        # 버튼
-        btn_frame = ttk.Frame(self)
-        btn_frame.pack(fill="x", **pad)
-        self.download_btn = ttk.Button(btn_frame, text="다운로드 시작", command=self._start_download)
-        self.download_btn.pack(side="left")
-        self.cancel_btn = ttk.Button(
-            btn_frame, text="취소", command=self._cancel_download, state="disabled"
-        )
-        self.cancel_btn.pack(side="left", padx=8)
 
         if not has_ffmpeg():
             self._log(
