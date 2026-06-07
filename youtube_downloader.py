@@ -24,6 +24,11 @@ from tkinter import filedialog, messagebox
 import customtkinter as ctk
 
 try:
+    from PIL import Image
+except ImportError:
+    Image = None
+
+try:
     import yt_dlp
 except ImportError:
     yt_dlp = None
@@ -32,13 +37,13 @@ except ImportError:
 APP_TITLE = "YouTube Downloader"
 
 # ----- 색상 팔레트 (목업 기준) -------------------------------------------------
-BG = "#EAF1FB"           # 창 배경 (연한 블루)
+BG = "#EEF3FB"           # 창 배경 (아주 연한 블루)
 CARD = "#FFFFFF"         # 카드 배경
 HEADING = "#1F2A37"      # 제목 텍스트
 SUBTLE = "#9AA7B8"       # 보조/플레이스홀더 텍스트
 ACCENT = "#3B82F6"       # 파란 강조색 (버튼)
 ACCENT_HOVER = "#2563EB"
-BORDER = "#E3E8F0"
+BORDER = "#E9EEF6"       # 카드/입력 테두리 (아주 옅게)
 
 
 def ffmpeg_dir():
@@ -126,16 +131,25 @@ class DownloaderApp(ctk.CTk):
             pass
 
     # --------------------------------------------------------------- helpers --
+    def _icon(self, name, size=20):
+        """icons/<name>.png 를 CTkImage 로 로드 (없으면 None)."""
+        if Image is None:
+            return None
+        path = resource_path(os.path.join("icons", name + ".png"))
+        if not os.path.exists(path):
+            return None
+        img = Image.open(path)
+        return ctk.CTkImage(light_image=img, dark_image=img, size=(size, size))
+
     def _card(self, parent):
         """둥근 흰색 카드 프레임."""
-        return ctk.CTkFrame(parent, fg_color=CARD, corner_radius=16,
+        return ctk.CTkFrame(parent, fg_color=CARD, corner_radius=18,
                             border_width=1, border_color=BORDER)
 
-    def _heading(self, parent, icon, text):
+    def _heading(self, parent, icon_name, text):
         row = ctk.CTkFrame(parent, fg_color="transparent")
-        ctk.CTkLabel(row, text=icon, font=ctk.CTkFont(size=18)).pack(side="left")
-        ctk.CTkLabel(row, text="  " + text, font=self.font_title,
-                     text_color=HEADING).pack(side="left")
+        ctk.CTkLabel(row, text="  " + text, font=self.font_title, text_color=HEADING,
+                     image=self._icon(icon_name, 22), compound="left").pack(side="left")
         return row
 
     # ------------------------------------------------------------------ UI --
@@ -146,11 +160,11 @@ class DownloaderApp(ctk.CTk):
         # ===== 카드 1: URL =====
         card_url = self._card(outer)
         card_url.pack(fill="x", pady=(0, 14))
-        head = self._heading(card_url, "🔗", "동영상 URL (여러 개는 줄바꿈으로 구분)")
+        head = self._heading(card_url, "link", "동영상 URL (여러 개는 줄바꿈으로 구분)")
         head.pack(fill="x", padx=18, pady=(14, 0))
         # 우측 도움말 버튼
-        ctk.CTkButton(head, text="?", width=30, height=30, corner_radius=15,
-                      fg_color="#EEF3FB", hover_color="#E0E8F5", text_color=SUBTLE,
+        ctk.CTkButton(head, text="", image=self._icon("help", 22), width=30, height=30,
+                      corner_radius=15, fg_color="transparent", hover_color="#EAF0F8",
                       command=self._show_help).pack(side="right")
 
         self.url_text = ctk.CTkTextbox(card_url, height=92, font=self.font_body,
@@ -163,33 +177,38 @@ class DownloaderApp(ctk.CTk):
         # ===== 카드 2: 옵션 =====
         card_opt = self._card(outer)
         card_opt.pack(fill="x", pady=(0, 14))
-        self._heading(card_opt, "⚙️", "옵션").pack(fill="x", padx=18, pady=(14, 6))
+        self._heading(card_opt, "gear", "옵션").pack(fill="x", padx=18, pady=(14, 6))
 
         grid = ctk.CTkFrame(card_opt, fg_color="transparent")
         grid.pack(fill="x", padx=18, pady=(0, 16))
         grid.columnconfigure(1, weight=1)
 
         # 저장 폴더
-        ctk.CTkLabel(grid, text="📁  저장 폴더", font=self.font_label,
-                     text_color=HEADING).grid(row=0, column=0, sticky="w", pady=8, padx=(0, 12))
+        ctk.CTkLabel(grid, text="  저장 폴더", font=self.font_label, text_color=HEADING,
+                     image=self._icon("folder", 20), compound="left"
+                     ).grid(row=0, column=0, sticky="w", pady=8, padx=(0, 14))
         self.folder_entry = ctk.CTkEntry(grid, textvariable=self.folder_var,
-                                         font=self.font_body, height=40, corner_radius=10,
-                                         border_color=BORDER)
+                                         font=self.font_body, height=42, corner_radius=10,
+                                         fg_color="#FFFFFF", border_color=BORDER)
         self.folder_entry.grid(row=0, column=1, sticky="ew", pady=8)
-        ctk.CTkButton(grid, text="📂  찾아보기…", width=130, height=40, corner_radius=10,
+        ctk.CTkButton(grid, text="  찾아보기…", image=self._icon("folder_blue", 18),
+                      compound="left", width=140, height=42, corner_radius=10,
                       font=self.font_label, fg_color="#FFFFFF", text_color=ACCENT,
-                      border_width=1, border_color="#CFE0FB", hover_color="#F0F5FF",
+                      border_width=1, border_color="#D8E3F5", hover_color="#F2F6FF",
                       command=self._choose_folder).grid(row=0, column=2, padx=(12, 0), pady=8)
 
         # 화질/형식
-        ctk.CTkLabel(grid, text="🎬  화질/형식", font=self.font_label,
-                     text_color=HEADING).grid(row=1, column=0, sticky="w", pady=8, padx=(0, 12))
-        self.format_menu = ctk.CTkOptionMenu(
+        ctk.CTkLabel(grid, text="  화질/형식", font=self.font_label, text_color=HEADING,
+                     image=self._icon("video", 20), compound="left"
+                     ).grid(row=1, column=0, sticky="w", pady=8, padx=(0, 14))
+        self.format_menu = ctk.CTkComboBox(
             grid, variable=self.format_var,
             values=[p[0] for p in self.FORMAT_PRESETS],
-            font=self.font_body, height=40, corner_radius=10,
-            fg_color="#FFFFFF", text_color=HEADING, button_color=ACCENT,
-            button_hover_color=ACCENT_HOVER,
+            font=self.font_body, height=42, corner_radius=10, state="readonly",
+            fg_color="#FFFFFF", text_color=HEADING, border_color=BORDER,
+            button_color="#FFFFFF", button_hover_color="#EEF3FB",
+            dropdown_fg_color="#FFFFFF", dropdown_text_color=HEADING,
+            dropdown_hover_color="#EAF1FB",
         )
         self.format_menu.grid(row=1, column=1, columnspan=2, sticky="ew", pady=8)
 
@@ -205,14 +224,15 @@ class DownloaderApp(ctk.CTk):
         btns = ctk.CTkFrame(outer, fg_color="transparent")
         btns.pack(side="bottom", fill="x", pady=(14, 0))
         self.download_btn = ctk.CTkButton(
-            btns, text="⬇   다운로드 시작", font=self.font_btn, height=52, width=200,
-            corner_radius=12, fg_color=ACCENT, hover_color=ACCENT_HOVER,
+            btns, text="   다운로드 시작", image=self._icon("download", 22), compound="left",
+            font=self.font_btn, height=52, width=210,
+            corner_radius=14, fg_color=ACCENT, hover_color=ACCENT_HOVER,
             command=self._start_download,
         )
         self.download_btn.pack(side="left")
         self.cancel_btn = ctk.CTkButton(
             btns, text="✕   취소", font=self.font_btn, height=52, width=130,
-            corner_radius=12, fg_color="#FFFFFF", text_color="#55606E",
+            corner_radius=14, fg_color="#FFFFFF", text_color="#55606E",
             border_width=1, border_color=BORDER, hover_color="#F2F5FA",
             command=self._cancel_download, state="disabled",
         )
@@ -221,7 +241,7 @@ class DownloaderApp(ctk.CTk):
         # ===== 카드 3: 진행 상태 =====
         card_prog = self._card(outer)
         card_prog.pack(fill="both", expand=True)
-        self._heading(card_prog, "📈", "진행 상태").pack(fill="x", padx=18, pady=(14, 6))
+        self._heading(card_prog, "activity", "진행 상태").pack(fill="x", padx=18, pady=(14, 6))
 
         prow = ctk.CTkFrame(card_prog, fg_color="transparent")
         prow.pack(fill="x", padx=18)

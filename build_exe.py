@@ -52,6 +52,11 @@ def main():
     icon_png = os.path.join(HERE, "icon.png")
     if os.path.exists(icon_png):
         args.append(f"--add-data={icon_png}{sep}.")
+    # UI 컬러 아이콘 폴더 번들
+    icons_dir = os.path.join(HERE, "icons")
+    if os.path.isdir(icons_dir):
+        args.append(f"--add-data={icons_dir}{sep}icons")
+        print(f"[build] bundling icons: {icons_dir}")
 
     # 같은 폴더에 ffmpeg/ffprobe 가 있으면 실행파일에 함께 번들
     exe_suffix = ".exe" if os.name == "nt" else ""
