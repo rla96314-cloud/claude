@@ -39,8 +39,18 @@ def main():
         "--noconfirm",
     ]
 
-    # 같은 폴더에 ffmpeg/ffprobe 가 있으면 실행파일에 함께 번들
+    # 앱 아이콘 (.exe 아이콘 + 창 아이콘으로 사용)
+    icon_ico = os.path.join(HERE, "icon.ico")
+    if os.path.exists(icon_ico):
+        args.append(f"--icon={icon_ico}")
+        print(f"[build] using icon: {icon_ico}")
+    # 실행 중 창 아이콘으로 쓰도록 icon.png 도 함께 번들
     sep = ";" if os.name == "nt" else ":"
+    icon_png = os.path.join(HERE, "icon.png")
+    if os.path.exists(icon_png):
+        args.append(f"--add-data={icon_png}{sep}.")
+
+    # 같은 폴더에 ffmpeg/ffprobe 가 있으면 실행파일에 함께 번들
     exe_suffix = ".exe" if os.name == "nt" else ""
     bundled_any = False
     for tool in ("ffmpeg", "ffprobe"):

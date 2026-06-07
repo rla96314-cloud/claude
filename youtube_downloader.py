@@ -71,6 +71,7 @@ class DownloaderApp(tk.Tk):
         self.title(APP_TITLE)
         self.geometry("680x460")
         self.minsize(620, 420)
+        self._set_window_icon()
 
         self.msg_queue: "queue.Queue" = queue.Queue()
         self.download_thread = None
@@ -85,6 +86,20 @@ class DownloaderApp(tk.Tk):
                 "yt-dlp 가 설치되어 있지 않습니다.\n\n"
                 "터미널에서 다음을 실행하세요:\n    pip install yt-dlp",
             )
+
+    def _set_window_icon(self):
+        """창/작업표시줄 아이콘 설정 (icon.ico 우선, 없으면 icon.png)."""
+        base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+        ico = os.path.join(base, "icon.ico")
+        png = os.path.join(base, "icon.png")
+        try:
+            if os.name == "nt" and os.path.exists(ico):
+                self.iconbitmap(ico)
+            elif os.path.exists(png):
+                self._icon_img = tk.PhotoImage(file=png)
+                self.iconphoto(True, self._icon_img)
+        except Exception:
+            pass  # 아이콘이 없어도 앱은 정상 동작
 
     # ------------------------------------------------------------------ UI --
     def _build_ui(self):
