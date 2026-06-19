@@ -37,6 +37,31 @@ python3 translator.py
 - 입력창에 텍스트를 넣고 **번역하기** 버튼 또는 **Ctrl+Enter**
 - **결과 복사** 버튼으로 클립보드에 복사
 
+## EXE로 빌드해서 바탕화면에 올리기 (윈도우)
+
+`translator.py`는 파이썬 스크립트라 평소엔 `python3 translator.py`로 실행하지만,
+**더블클릭으로 실행되는 단독 `.exe`** 로 만들 수도 있습니다.
+
+1. 이 `translator` 폴더를 윈도우 PC로 복사 (또는 이 저장소를 clone)
+2. 폴더 안의 **`build_windows.bat` 를 더블클릭**
+
+그러면 자동으로:
+- PyInstaller 설치
+- `한영번역기.exe` 빌드 (`--onefile --windowed`)
+- **바탕화면에 `한영번역기.exe` 복사**
+
+빌드가 끝나면 바탕화면의 `한영번역기.exe`를 더블클릭해 실행하면 됩니다.
+(단, 번역하려면 Ollama가 실행 중이어야 합니다.)
+
+> **참고**
+> - 빌드는 반드시 **윈도우 PC에서** 해야 윈도우 exe가 나옵니다. (리눅스/맥에서
+>   빌드하면 해당 OS용 실행파일이 됩니다.)
+> - exe는 파이썬/tkinter를 내장하므로, 빌드 후엔 파이썬 설치 없이도 실행됩니다.
+>   하지만 **Ollama는 여전히 별도로 설치/실행**되어 있어야 합니다.
+> - 직접 빌드하려면: `pyinstaller --onefile --windowed --name 한영번역기 translator.py`
+> - **윈도우 시작 시 자동 실행**을 원하면, 만들어진 exe의 바로가기를
+>   `Win+R` → `shell:startup` 폴더에 넣으면 됩니다.
+
 ## 동작 방식
 
 `translator.py` 한 파일로 구성되어 있습니다.
