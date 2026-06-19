@@ -19,6 +19,25 @@ import comfy.model_management as mm
 
 
 # --------------------------------------------------------------------------- #
+# Wildcard type — lets a socket accept/emit any ComfyUI type.
+# ComfyUI matches on string equality, so a type that compares equal to
+# everything ("*") is the canonical way to build passthrough/anchor sockets.
+# --------------------------------------------------------------------------- #
+class AnyType(str):
+    def __eq__(self, _other):
+        return True
+
+    def __ne__(self, _other):
+        return False
+
+    def __hash__(self):
+        return hash("*")
+
+
+ANY = AnyType("*")
+
+
+# --------------------------------------------------------------------------- #
 # Helpers
 # --------------------------------------------------------------------------- #
 def _free_total_vram_mb():
@@ -52,12 +71,12 @@ class VRAMCleanup:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "passthrough": ("*",),
+                "passthrough": (ANY,),
                 "unload_models": ("BOOLEAN", {"default": False}),
             }
         }
 
-    RETURN_TYPES = ("*",)
+    RETURN_TYPES = (ANY,)
     RETURN_NAMES = ("passthrough",)
     FUNCTION = "clean"
     CATEGORY = "optimizer"
@@ -98,13 +117,13 @@ class TorchPerfTuner:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "anchor": ("*",),
+                "anchor": (ANY,),
                 "tf32": ("BOOLEAN", {"default": True}),
                 "cudnn_benchmark": ("BOOLEAN", {"default": True}),
             }
         }
 
-    RETURN_TYPES = ("*",)
+    RETURN_TYPES = (ANY,)
     RETURN_NAMES = ("anchor",)
     FUNCTION = "tune"
     CATEGORY = "optimizer"
