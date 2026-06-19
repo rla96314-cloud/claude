@@ -68,7 +68,7 @@
         {"name": "CONDITIONING", "type": "CONDITIONING", "links": [7], "slot_index": 0}
       ],
       "properties": {"Node name for S&R": "CLIPTextEncode"},
-      "widgets_values": ["blurry, low quality, watermark, text, deformed"]
+      "widgets_values": ["blurry, low quality, watermark, text, deformed, multiple people, two people, crowd, duplicate, clone, extra person, extra heads"]
     },
     {
       "id": 5,
