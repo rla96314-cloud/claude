@@ -1,11 +1,37 @@
 # 로컬 한↔영 번역기
 
-두 가지 버전이 있습니다. 상황에 맞게 고르세요.
+세 가지 버전이 있습니다. 품질과 설치 난이도를 보고 고르세요.
 
-| 버전 | 파일 | 엔진 | 특징 |
-|------|------|------|------|
-| **Argos** ⭐쉬움 | `translator_argos.py` | Argos Translate | `pip install argostranslate` 하나면 끝. 별도 서버 불필요. 모델 ~100MB. |
-| Ollama | `translator.py` | 로컬 LLM | 품질 최고지만 Ollama 별도 설치 + 다GB 모델 필요. |
+| 버전 | 파일 | 엔진 | 품질 | 특징 |
+|------|------|------|------|------|
+| Argos | `translator_argos.py` | Argos Translate | ★★ | 제일 가벼움(`pip` 하나, ~100MB). 품질은 낮음. |
+| **NLLB-200** ⭐품질 | `translator_nllb.py` | HF NLLB-200 | ★★★★ | 번역 전용 모델. 서버 불필요. 설치 무거움(torch, ~2.4GB). |
+| Ollama | `translator.py` | 로컬 LLM | ★★★★★ | 품질 최고지만 Ollama 별도 설치 + 다GB 모델 필요. |
+
+---
+
+## NLLB-200 버전 (품질 추천 — Ollama 불필요)
+
+Meta의 **NLLB-200** 번역 전용 모델을 로컬에서 직접 돌립니다. Argos보다 품질이
+확실히 높고, Ollama 같은 별도 서버도 필요 없습니다. 모델은 처음 한 번만
+내려받고(~2.4GB) 이후엔 완전 오프라인입니다.
+
+**빌드 없이 바로 실행 (권장):**
+- `run_nllb.bat` 더블클릭 → 필요한 패키지 설치 후 앱 실행
+
+수동 실행:
+```bash
+pip install transformers torch sentencepiece
+python3 translator_nllb.py
+```
+
+품질을 더 올리고 싶으면 `translator_nllb.py` 상단의
+`MODEL_NAME` 을 `"facebook/nllb-200-1.3B"` 로 바꾸세요 (더 무겁고 느림).
+
+> 참고: torch가 커서 첫 설치/첫 다운로드가 느립니다. 그리고 torch 기반이라
+> **exe로 빌드하면 용량이 수 GB**가 되어 권장하지 않습니다. `run_nllb.bat`로
+> 실행하는 방식을 추천합니다. (바탕화면 바로가기를 만들고 싶으면
+> `run_nllb.bat` 의 바로가기를 바탕화면에 두세요.)
 
 ---
 
