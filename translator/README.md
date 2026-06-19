@@ -1,4 +1,37 @@
-# 로컬 한↔영 번역기 (Ollama)
+# 로컬 한↔영 번역기
+
+두 가지 버전이 있습니다. 상황에 맞게 고르세요.
+
+| 버전 | 파일 | 엔진 | 특징 |
+|------|------|------|------|
+| **Argos** ⭐쉬움 | `translator_argos.py` | Argos Translate | `pip install argostranslate` 하나면 끝. 별도 서버 불필요. 모델 ~100MB. |
+| Ollama | `translator.py` | 로컬 LLM | 품질 최고지만 Ollama 별도 설치 + 다GB 모델 필요. |
+
+---
+
+## A. Argos 버전 (추천 — Ollama 불필요)
+
+별도 서버 없이 파이썬 패키지 안에서 바로 번역합니다. 모델은 **처음 한 번만**
+인터넷에서 받고(각 ~100MB), 이후엔 완전 오프라인으로 동작합니다.
+
+**빌드 없이 바로 실행:**
+- `run_argos.bat` 더블클릭 → argostranslate 자동 설치 후 앱 실행
+
+**EXE로 만들어 바탕화면에 올리기:**
+- `build_windows_argos.bat` 더블클릭 → exe 빌드 후 **진짜 바탕화면**(OneDrive 포함)에 자동 복사
+
+수동 실행:
+```bash
+pip install argostranslate
+python3 translator_argos.py
+```
+
+> 참고: Argos는 한·영 직접 모델(ko→en, en→ko)을 사용합니다. 번역 품질은
+> LLM보다 약간 떨어질 수 있지만, 설치가 훨씬 간단하고 가볍습니다.
+
+---
+
+## B. Ollama 버전
 
 인터넷 없이 로컬에서 동작하는 한국어 ↔ 영어 데스크톱 번역기입니다.
 번역은 [Ollama](https://ollama.com)로 띄운 로컬 LLM이 담당하며, 모든 요청은
