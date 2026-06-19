@@ -1,0 +1,263 @@
+{
+  "last_node_id": 14,
+  "last_link_id": 14,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "UNETLoader",
+      "pos": [40, 80],
+      "size": [340, 82],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "MODEL", "type": "MODEL", "links": [1], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "UNETLoader"},
+      "widgets_values": ["z_image_turbo_bf16.safetensors", "default"]
+    },
+    {
+      "id": 2,
+      "type": "ModelSamplingAuraFlow",
+      "pos": [420, 80],
+      "size": [280, 58],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {"name": "model", "type": "MODEL", "link": 1}
+      ],
+      "outputs": [
+        {"name": "MODEL", "type": "MODEL", "links": [2], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "ModelSamplingAuraFlow"},
+      "widgets_values": [3.0]
+    },
+    {
+      "id": 3,
+      "type": "CLIPLoader",
+      "pos": [40, 220],
+      "size": [340, 106],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "CLIP", "type": "CLIP", "links": [3], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "CLIPLoader"},
+      "widgets_values": ["qwen_3_4b.safetensors", "lumina2", "default"]
+    },
+    {
+      "id": 4,
+      "type": "VAELoader",
+      "pos": [40, 380],
+      "size": [340, 58],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "VAE", "type": "VAE", "links": [13], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "VAELoader"},
+      "widgets_values": ["ae.safetensors"]
+    },
+    {
+      "id": 5,
+      "type": "CLIPTextEncode",
+      "pos": [420, 220],
+      "size": [400, 140],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {"name": "clip", "type": "CLIP", "link": 3}
+      ],
+      "outputs": [
+        {"name": "CONDITIONING", "type": "CONDITIONING", "links": [4, 5], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "CLIPTextEncode"},
+      "widgets_values": ["a photorealistic portrait of a single young woman, detailed face, well-formed natural hands with five fingers, sharp focus, soft cinematic lighting, high quality"]
+    },
+    {
+      "id": 6,
+      "type": "ConditioningZeroOut",
+      "pos": [420, 400],
+      "size": [260, 26],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {"name": "conditioning", "type": "CONDITIONING", "link": 5}
+      ],
+      "outputs": [
+        {"name": "CONDITIONING", "type": "CONDITIONING", "links": [6], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "ConditioningZeroOut"},
+      "widgets_values": []
+    },
+    {
+      "id": 7,
+      "type": "OptimizerAdaptiveBatchSize",
+      "pos": [40, 480],
+      "size": [320, 154],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "batch_size", "type": "INT", "links": [7], "slot_index": 0},
+        {"name": "report", "type": "STRING", "links": null, "slot_index": 1}
+      ],
+      "properties": {"Node name for S&R": "OptimizerAdaptiveBatchSize"},
+      "widgets_values": [1024, 1024, 4, "flux", 2048]
+    },
+    {
+      "id": 8,
+      "type": "EmptySD3LatentImage",
+      "pos": [420, 480],
+      "size": [300, 106],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {"name": "batch_size", "type": "INT", "link": 7, "widget": {"name": "batch_size"}}
+      ],
+      "outputs": [
+        {"name": "LATENT", "type": "LATENT", "links": [8], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "EmptySD3LatentImage"},
+      "widgets_values": [1024, 1024, 1]
+    },
+    {
+      "id": 9,
+      "type": "OptimizerTorchPerfTuner",
+      "pos": [760, 480],
+      "size": [280, 82],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {"name": "anchor", "type": "*", "link": 8}
+      ],
+      "outputs": [
+        {"name": "anchor", "type": "*", "links": [9], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "OptimizerTorchPerfTuner"},
+      "widgets_values": [true, true]
+    },
+    {
+      "id": 10,
+      "type": "OptimizerBatchSeedList",
+      "pos": [40, 660],
+      "size": [320, 106],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "seed", "type": "INT", "links": [10], "slot_index": 0},
+        {"name": "seed_list", "type": "STRING", "links": null, "slot_index": 1}
+      ],
+      "properties": {"Node name for S&R": "OptimizerBatchSeedList"},
+      "widgets_values": [0, 4, "increment"]
+    },
+    {
+      "id": 11,
+      "type": "KSampler",
+      "pos": [860, 80],
+      "size": [320, 280],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {"name": "model", "type": "MODEL", "link": 2},
+        {"name": "positive", "type": "CONDITIONING", "link": 4},
+        {"name": "negative", "type": "CONDITIONING", "link": 6},
+        {"name": "latent_image", "type": "LATENT", "link": 9},
+        {"name": "seed", "type": "INT", "link": 10, "widget": {"name": "seed"}}
+      ],
+      "outputs": [
+        {"name": "LATENT", "type": "LATENT", "links": [11], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "KSampler"},
+      "widgets_values": [0, "fixed", 8, 1.0, "res_multistep", "simple", 1.0]
+    },
+    {
+      "id": 12,
+      "type": "OptimizerVRAMCleanup",
+      "pos": [1220, 80],
+      "size": [280, 82],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [
+        {"name": "passthrough", "type": "*", "link": 11}
+      ],
+      "outputs": [
+        {"name": "passthrough", "type": "*", "links": [12], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "OptimizerVRAMCleanup"},
+      "widgets_values": [false]
+    },
+    {
+      "id": 13,
+      "type": "VAEDecode",
+      "pos": [1220, 220],
+      "size": [220, 46],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [
+        {"name": "samples", "type": "LATENT", "link": 12},
+        {"name": "vae", "type": "VAE", "link": 13}
+      ],
+      "outputs": [
+        {"name": "IMAGE", "type": "IMAGE", "links": [14], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "VAEDecode"},
+      "widgets_values": []
+    },
+    {
+      "id": 14,
+      "type": "SaveImage",
+      "pos": [1220, 320],
+      "size": [360, 380],
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "inputs": [
+        {"name": "images", "type": "IMAGE", "link": 14}
+      ],
+      "outputs": [],
+      "properties": {"Node name for S&R": "SaveImage"},
+      "widgets_values": ["z-image-turbo"]
+    }
+  ],
+  "links": [
+    [1, 1, 0, 2, 0, "MODEL"],
+    [2, 2, 0, 11, 0, "MODEL"],
+    [3, 3, 0, 5, 0, "CLIP"],
+    [4, 5, 0, 11, 1, "CONDITIONING"],
+    [5, 5, 0, 6, 0, "CONDITIONING"],
+    [6, 6, 0, 11, 2, "CONDITIONING"],
+    [7, 7, 0, 8, 0, "INT"],
+    [8, 8, 0, 9, 0, "LATENT"],
+    [9, 9, 0, 11, 3, "LATENT"],
+    [10, 10, 0, 11, 4, "INT"],
+    [11, 11, 0, 12, 0, "LATENT"],
+    [12, 12, 0, 13, 0, "LATENT"],
+    [13, 4, 0, 13, 1, "VAE"],
+    [14, 13, 0, 14, 0, "IMAGE"]
+  ],
+  "groups": [
+    {"title": "Loaders", "bounding": [20, 20, 370, 430], "color": "#3f789e", "font_size": 24},
+    {"title": "Optimizer (8GB-friendly)", "bounding": [20, 460, 1030, 320], "color": "#3f5f3f", "font_size": 24},
+    {"title": "Z-Image Turbo sampling (8 steps, cfg 1.0)", "bounding": [410, 20, 780, 420], "color": "#8e3f3f", "font_size": 24}
+  ],
+  "config": {},
+  "extra": {},
+  "version": 0.4
+}

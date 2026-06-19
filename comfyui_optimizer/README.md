@@ -44,3 +44,28 @@ model. Adaptive Batch Size will size the batch to your card automatically; drop
 - Keep `cudnn_benchmark` on only when resolution is constant across runs.
 - Raise `vram_reserve_mb` if you also run a VAE/upscale step after sampling.
 - For Flux, switch the `model_class` dropdowns on the batch nodes to `flux`.
+
+## Z-Image Turbo workflow (8 GB-friendly)
+
+`workflows/zimage_turbo_optimized.json` is tuned for **Z-Image Turbo**, the
+distilled few-step model — ideal for 8 GB cards.
+
+Required files:
+
+| File | Folder |
+|------|--------|
+| `z_image_turbo_bf16.safetensors` | `models/diffusion_models/` |
+| `qwen_3_4b.safetensors`          | `models/text_encoders/` |
+| `ae.safetensors`                 | `models/vae/` |
+
+Loaders: `UNETLoader` + `CLIPLoader` (type **lumina2**) + `VAELoader`.
+Sampler: **8 steps, CFG 1.0, `res_multistep` / `simple`**.
+
+> ⚠️ Z-Image Turbo runs at CFG 1.0, so the **negative prompt is disabled**
+> (`ConditioningZeroOut`). Steer quality/anatomy through the *positive* prompt.
+> For negative prompts to take effect, use the non-turbo Z-Image at CFG > 1.
+
+Optimizer nodes included here: `Torch Perf Tuner` (TF32 helps the DiT matmuls),
+`Adaptive Batch Size`, `Batch Seed List`, and `VRAM Cleanup` before VAE decode.
+`Model Memory Format` is intentionally omitted — `channels_last` only helps
+conv UNets, not Z-Image's transformer.
