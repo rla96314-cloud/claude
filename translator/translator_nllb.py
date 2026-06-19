@@ -12,9 +12,13 @@ Meta의 NLLB-200 번역 전용 모델을 로컬에서 직접 구동해 한국어
     python3 translator_nllb.py
 """
 
+import re
 import threading
 import tkinter as tk
 from tkinter import messagebox, ttk
+
+# 단어 목록을 나눌 구분자: 쉼표, 줄바꿈, 가운뎃점, 슬래시, 세미콜론 등
+TERM_SPLIT = re.compile(r"[,\n;/·•、]+")
 
 # 모델 선택: 품질을 더 올리려면 "facebook/nllb-200-1.3B" (더 무거움/느림)
 MODEL_NAME = "facebook/nllb-200-distilled-600M"
@@ -55,6 +59,19 @@ def load_model(progress=None) -> None:
     _model = AutoModelForSeq2SeqLM.from_pretrained(MODEL_NAME)
 
 
+def _generate(text: str, bos: int) -> str:
+    """모델로 한 덩어리를 번역한다 (호출 전 src_lang 설정 필요)."""
+    inputs = _tokenizer(text, return_tensors="pt", truncation=True, max_length=512)
+    tokens = _model.generate(
+        **inputs,
+        forced_bos_token_id=bos,
+        max_new_tokens=MAX_NEW_TOKENS,
+        num_beams=NUM_BEAMS,
+        no_repeat_ngram_size=3,
+    )
+    return _tokenizer.batch_decode(tokens, skip_special_tokens=True)[0]
+
+
 def translate(text: str, src: str, tgt: str, progress=None) -> str:
     """줄 단위로 나눠 번역해 긴 글의 잘림을 줄이고 형식을 보존한다."""
     load_model(progress)
@@ -66,17 +83,27 @@ def translate(text: str, src: str, tgt: str, progress=None) -> str:
         if not line.strip():
             out_lines.append("")
             continue
-        inputs = _tokenizer(line, return_tensors="pt", truncation=True, max_length=512)
-        tokens = _model.generate(
-            **inputs,
-            forced_bos_token_id=bos,
-            max_new_tokens=MAX_NEW_TOKENS,
-            num_beams=NUM_BEAMS,
-            no_repeat_ngram_size=3,
-        )
-        out_lines.append(
-            _tokenizer.batch_decode(tokens, skip_special_tokens=True)[0]
-        )
+        out_lines.append(_generate(line, bos))
+    return "\n".join(out_lines)
+
+
+def translate_terms(text: str, src: str, tgt: str, progress=None) -> str:
+    """단어/표현을 하나씩 따로 번역한다.
+
+    문장 번역기가 단어 목록을 한 문장으로 오해해 없는 주어·대명사를 끼워넣거나
+    엉뚱하게 지칭하는 문제를 막기 위해, 각 항목을 독립적으로 번역하고
+    `원어  →  번역` 형태로 정렬해 보여준다.
+    """
+    load_model(progress)
+    _tokenizer.src_lang = src
+    bos = _tokenizer.convert_tokens_to_ids(tgt)
+
+    terms = [t.strip() for t in TERM_SPLIT.split(text) if t.strip()]
+    out_lines = []
+    for i, term in enumerate(terms, 1):
+        if progress:
+            progress(f"단어 번역 중… ({i}/{len(terms)})")
+        out_lines.append(f"{term}  →  {_generate(term, bos)}")
     return "\n".join(out_lines)
 
 
@@ -99,9 +126,19 @@ class TranslatorApp:
         )
         self.direction.current(0)
         self.direction.pack(side="left", padx=(4, 16))
+        self.word_mode = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            top,
+            text="단어 목록 모드 (단어별 따로 번역)",
+            variable=self.word_mode,
+        ).pack(side="left", padx=(0, 16))
+
         ttk.Label(top, text=f"모델: {MODEL_NAME.split('/')[-1]}").pack(side="left")
 
-        ttk.Label(self.root, text="입력 텍스트:").pack(anchor="w", padx=10)
+        ttk.Label(
+            self.root,
+            text="입력 텍스트  (단어 목록 모드: 쉼표나 줄바꿈으로 단어를 구분하세요)",
+        ).pack(anchor="w", padx=10)
         self.input_text = tk.Text(self.root, height=8, wrap="word", font=("", 11))
         self.input_text.pack(fill="both", expand=True, padx=10, pady=(0, 6))
         self.input_text.focus_set()
@@ -157,15 +194,17 @@ class TranslatorApp:
             self.status.set("번역할 텍스트를 입력하세요")
             return
         src, tgt = DIRECTIONS[self.direction.get()]
+        word_mode = self.word_mode.get()
         self.translate_btn.configure(state="disabled")
         self.status.set("번역 준비 중…")
         threading.Thread(
-            target=self._run, args=(text, src, tgt), daemon=True
+            target=self._run, args=(text, src, tgt, word_mode), daemon=True
         ).start()
 
-    def _run(self, text, src, tgt) -> None:
+    def _run(self, text, src, tgt, word_mode) -> None:
         try:
-            result = translate(text, src, tgt, progress=self._progress)
+            fn = translate_terms if word_mode else translate
+            result = fn(text, src, tgt, progress=self._progress)
             self.root.after(0, self._on_success, result)
         except ImportError:
             self.root.after(
