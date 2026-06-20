@@ -42,7 +42,26 @@ AtomS3에는 내장 부저가 없고, 측면 버튼은 리셋(EN)에 연결되�
 > G38/G39는 AtomS3 하단 헤더에 노출된 GPIO입니다. 다른 핀을 쓰려면 `.ino` 상단의
 > `PIN_SIDE_BUTTON`, `PIN_BUZZER` 값만 바꾸면 됩니다.
 
-## 설정 및 업로드
+## VS Code (PlatformIO)로 업로드 — 추천
+
+이 폴더에 `platformio.ini` 가 포함되어 있어, 보드/라이브러리가 자동으로 설치됩니다.
+
+1. VS Code 설치 후 확장에서 **PlatformIO IDE** 설치 (처음 설치 시 초기화에 몇 분 걸립니다)
+2. VS Code에서 **이 `atoms3_drip_timer` 폴더를 엽니다** (`파일 > 폴더 열기`).
+   - 폴더 루트에 `platformio.ini` 가 있어야 PlatformIO가 프로젝트로 인식합니다.
+3. PlatformIO가 `espressif32` 플랫폼과 `M5Unified`, `ArduinoJson` 라이브러리를 자동 설치합니다.
+4. 필요하면 `atoms3_drip_timer.ino` 상단의 WiFi 정보를 확인/수정합니다.
+5. AtomS3를 USB-C로 연결하고, 하단 PlatformIO 툴바에서
+   - **✓ (Build)** 로 먼저 컴파일 확인
+   - **→ (Upload)** 로 보드에 플래싱
+   - **🔌 (Serial Monitor)** 로 로그 확인 (115200bps)
+   - 포트는 보통 자동 인식됩니다. 안 되면 `platformio.ini` 의 env에 `upload_port = COM5`(윈도우) 또는 `/dev/ttyACM0`(리눅스/맥) 추가.
+
+> AtomS3가 업로드 모드로 안 들어가면, 측면 리셋 버튼을 길게 눌러 다운로드 모드로 진입한 뒤 업로드하세요.
+
+VS Code에서 **Arduino 확장(또는 arduino-cli)** 을 쓰고 싶다면 아래 "설정 및 업로드" 절차를 참고하세요.
+
+## 설정 및 업로드 (Arduino IDE / arduino-cli)
 
 1. `atoms3_drip_timer.ino` 상단의 WiFi 정보가 집 WiFi로 설정되어 있는지 확인합니다.
    (현재 `U+NetCB90` 으로 설정되어 있음. 바꾸려면 `WIFI_SSID` / `WIFI_PASS` 수정)
