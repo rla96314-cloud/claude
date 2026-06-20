@@ -1,0 +1,195 @@
+{
+  "last_node_id": 10,
+  "last_link_id": 11,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "UNETLoader",
+      "pos": [40, 120],
+      "size": [320, 82],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        { "name": "MODEL", "type": "MODEL", "links": [1], "slot_index": 0 }
+      ],
+      "properties": { "Node name for S&R": "UNETLoader" },
+      "widgets_values": ["z_image_turbo.safetensors", "default"],
+      "title": "Load Diffusion Model (Z-Image Turbo)"
+    },
+    {
+      "id": 2,
+      "type": "CLIPLoader",
+      "pos": [40, 250],
+      "size": [320, 106],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        { "name": "CLIP", "type": "CLIP", "links": [2], "slot_index": 0 }
+      ],
+      "properties": { "Node name for S&R": "CLIPLoader" },
+      "widgets_values": ["qwen_2.5_vl_7b_fp8_scaled.safetensors", "z_image", "default"],
+      "title": "Load Text Encoder"
+    },
+    {
+      "id": 3,
+      "type": "VAELoader",
+      "pos": [40, 400],
+      "size": [320, 58],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        { "name": "VAE", "type": "VAE", "links": [10], "slot_index": 0 }
+      ],
+      "properties": { "Node name for S&R": "VAELoader" },
+      "widgets_values": ["z_image_vae.safetensors"],
+      "title": "Load VAE"
+    },
+    {
+      "id": 4,
+      "type": "LoraLoader",
+      "pos": [410, 120],
+      "size": [330, 126],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        { "name": "model", "type": "MODEL", "link": 1 },
+        { "name": "clip", "type": "CLIP", "link": 2 }
+      ],
+      "outputs": [
+        { "name": "MODEL", "type": "MODEL", "links": [3], "slot_index": 0 },
+        { "name": "CLIP", "type": "CLIP", "links": [4, 5], "slot_index": 1 }
+      ],
+      "properties": { "Node name for S&R": "LoraLoader" },
+      "widgets_values": ["character_design_sheet_helper_3_zimage.safetensors", 0.8, 0.8],
+      "title": "LoRA - Character Design Sheet Helper 3"
+    },
+    {
+      "id": 5,
+      "type": "CLIPTextEncode",
+      "pos": [780, 100],
+      "size": [430, 200],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        { "name": "clip", "type": "CLIP", "link": 4 }
+      ],
+      "outputs": [
+        { "name": "CONDITIONING", "type": "CONDITIONING", "links": [6], "slot_index": 0 }
+      ],
+      "properties": { "Node name for S&R": "CLIPTextEncode" },
+      "widgets_values": ["character design sheet, character reference sheet, multiple views, front view, side view, back view, full body, color palette, 1girl, white background, simple background, masterpiece, best quality, highly detailed"],
+      "title": "Positive Prompt"
+    },
+    {
+      "id": 6,
+      "type": "CLIPTextEncode",
+      "pos": [780, 340],
+      "size": [430, 140],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        { "name": "clip", "type": "CLIP", "link": 5 }
+      ],
+      "outputs": [
+        { "name": "CONDITIONING", "type": "CONDITIONING", "links": [7], "slot_index": 0 }
+      ],
+      "properties": { "Node name for S&R": "CLIPTextEncode" },
+      "widgets_values": ["lowres, bad anatomy, bad hands, cropped, worst quality, low quality, jpeg artifacts, watermark, text, signature, blurry"],
+      "title": "Negative Prompt"
+    },
+    {
+      "id": 7,
+      "type": "EmptySD3LatentImage",
+      "pos": [780, 520],
+      "size": [320, 106],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        { "name": "LATENT", "type": "LATENT", "links": [8], "slot_index": 0 }
+      ],
+      "properties": { "Node name for S&R": "EmptySD3LatentImage" },
+      "widgets_values": [1536, 1024, 1],
+      "title": "Empty Latent (wide for sheet)"
+    },
+    {
+      "id": 8,
+      "type": "KSampler",
+      "pos": [1250, 120],
+      "size": [320, 262],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        { "name": "model", "type": "MODEL", "link": 3 },
+        { "name": "positive", "type": "CONDITIONING", "link": 6 },
+        { "name": "negative", "type": "CONDITIONING", "link": 7 },
+        { "name": "latent_image", "type": "LATENT", "link": 8 }
+      ],
+      "outputs": [
+        { "name": "LATENT", "type": "LATENT", "links": [9], "slot_index": 0 }
+      ],
+      "properties": { "Node name for S&R": "KSampler" },
+      "widgets_values": [0, "randomize", 8, 1.0, "euler", "simple", 1.0],
+      "title": "KSampler (Turbo: 8 steps, CFG 1.0)"
+    },
+    {
+      "id": 9,
+      "type": "VAEDecode",
+      "pos": [1600, 120],
+      "size": [200, 46],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        { "name": "samples", "type": "LATENT", "link": 9 },
+        { "name": "vae", "type": "VAE", "link": 10 }
+      ],
+      "outputs": [
+        { "name": "IMAGE", "type": "IMAGE", "links": [11], "slot_index": 0 }
+      ],
+      "properties": { "Node name for S&R": "VAEDecode" }
+    },
+    {
+      "id": 10,
+      "type": "SaveImage",
+      "pos": [1600, 220],
+      "size": [400, 400],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        { "name": "images", "type": "IMAGE", "link": 11 }
+      ],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": ["charsheet"]
+    }
+  ],
+  "links": [
+    [1, 1, 0, 4, 0, "MODEL"],
+    [2, 2, 0, 4, 1, "CLIP"],
+    [3, 4, 0, 8, 0, "MODEL"],
+    [4, 4, 1, 5, 0, "CLIP"],
+    [5, 4, 1, 6, 0, "CLIP"],
+    [6, 5, 0, 8, 1, "CONDITIONING"],
+    [7, 6, 0, 8, 2, "CONDITIONING"],
+    [8, 7, 0, 8, 3, "LATENT"],
+    [9, 8, 0, 9, 0, "LATENT"],
+    [10, 3, 0, 9, 1, "VAE"]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {},
+  "version": 0.4
+}
