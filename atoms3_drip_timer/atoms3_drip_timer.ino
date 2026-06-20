@@ -30,8 +30,8 @@
 
 // ===================== 사용자 설정 =====================
 // 집 WiFi 정보 (STA 모드). 접속 실패 시 자동으로 AP 모드로 전환됩니다.
-const char* WIFI_SSID = "YOUR_WIFI_SSID";
-const char* WIFI_PASS = "YOUR_WIFI_PASSWORD";
+const char* WIFI_SSID = "U+NetCB90";
+const char* WIFI_PASS = "DD883PDF@0";
 
 // STA 접속 실패 시 폴백 AP 정보
 const char* AP_SSID = "AtomS3-Drip";
@@ -53,6 +53,7 @@ constexpr int WARN_SECONDS = 5;
 // ----- 데이터 모델 -----
 struct Step {
   String label;
+  uint16_t water;     // 목표 물량 (g). 0이면 시작 시 물량 화면 생략
   uint16_t seconds;
 };
 struct Recipe {
@@ -86,6 +87,10 @@ int   lastTickSecond  = -1;     // 마지막 5초 틱 비프용
 unsigned long confirmStartMs = 0;
 bool  confirmReady    = false;  // 깜빡임 끝나고 시작 입력 받을 준비
 int   confirmLastPhase = -1;    // 깜빡임 단계 표시 갱신용
+
+bool  stepIntro      = false;   // 단계 시작 시 물량 3초 노출 중
+unsigned long stepIntroEndMs = 0;
+constexpr unsigned long INTRO_MS = 3000;  // 물량 노출 시간
 
 String netInfo = "";            // 화면 하단에 표시할 접속 주소
 
@@ -132,6 +137,7 @@ String recipesToJson() {
     for (auto& s : r.steps) {
       JsonObject so = sarr.add<JsonObject>();
       so["label"]   = s.label;
+      so["water"]   = s.water;
       so["seconds"] = s.seconds;
     }
   }
@@ -161,6 +167,10 @@ bool loadRecipesFromJson(const String& json) {
       if (sec < 1)    sec = 1;
       if (sec > 3600) sec = 3600;
       s.seconds = (uint16_t)sec;
+      long wat  = so["water"] | 0;
+      if (wat < 0)    wat = 0;
+      if (wat > 9999) wat = 9999;
+      s.water   = (uint16_t)wat;
       r.steps.push_back(s);
     }
     if (!r.steps.empty()) parsed.push_back(r);
@@ -180,21 +190,21 @@ void loadDefaultRecipes() {
   // 기본 예시: 하리오 V60 4:6 스타일 (총 6단계)
   Recipe a;
   a.name = "V60 4:6";
-  a.steps = {
-    {"1차 (50g)", 45},
-    {"2차 (70g)", 45},
-    {"3차 (60g)", 45},
-    {"4차 (60g)", 45},
-    {"5차 (60g)", 45},
-    {"드립 완료 대기", 30},
+  a.steps = {           // {라벨, 물량(g), 시간(초)}
+    {"1차", 50, 45},
+    {"2차", 70, 45},
+    {"3차", 60, 45},
+    {"4차", 60, 45},
+    {"5차", 60, 45},
+    {"드립 완료 대기", 0, 30},
   };
   Recipe b;
   b.name = "기본 핸드드립";
   b.steps = {
-    {"뜸들이기", 30},
-    {"1차 추출", 40},
-    {"2차 추출", 40},
-    {"마무리", 30},
+    {"뜸들이기", 40, 30},
+    {"1차 추출", 120, 40},
+    {"2차 추출", 120, 40},
+    {"마무리", 0, 30},
   };
   recipes.push_back(a);
   recipes.push_back(b);
@@ -231,9 +241,10 @@ const char INDEX_HTML[] PROGMEM = R"HTMLPAGE(
   input { background:#2a2a30; color:#eee; border:1px solid #444;
           border-radius:8px; padding:8px; font-size:15px; }
   input[type=number]{ width:84px; text-align:center; }
-  table { width:100%; border-collapse:collapse; }
-  td { padding:4px 2px; }
-  td.sec { text-align:right; white-space:nowrap; }
+  .step { margin-bottom:10px; }
+  .step-ctrls { display:flex; gap:6px; align-items:center; margin-top:5px; font-size:14px; }
+  .step-ctrls input[type=number]{ width:62px; text-align:center; }
+  .step-ctrls .danger { margin-left:auto; }
   button { border:none; border-radius:8px; padding:9px 12px; font-size:14px;
            cursor:pointer; background:#3a3a44; color:#eee; }
   button.primary { background:#c97b34; color:#fff; font-weight:700; }
@@ -248,7 +259,7 @@ const char INDEX_HTML[] PROGMEM = R"HTMLPAGE(
 </head>
 <body>
   <h1>☕ 드립 레시피 설정</h1>
-  <div class="hint">단계마다 라벨과 시간(초)을 정합니다. 장치에서 측면 버튼으로 레시피를 고르고, 액정을 눌러 시작합니다.</div>
+  <div class="hint">단계마다 라벨 · 물량(g) · 시간(초)을 정합니다. 단계 시작 시 물량이 3초간 표시된 뒤 카운트다운이 시작됩니다. (물량 0이면 물량 화면 생략)</div>
   <div id="recipes"></div>
   <button class="small" onclick="addRecipe()">+ 레시피 추가</button>
   <div class="bottom">
@@ -294,39 +305,45 @@ function render() {
     head.appendChild(del);
     box.appendChild(head);
 
-    const tbl = document.createElement('table');
     (rec.steps || []).forEach((st, j) => {
-      const tr = document.createElement('tr');
+      const step = document.createElement('div');
+      step.className = 'step';
 
-      const tdL = document.createElement('td');
       const lab = document.createElement('input');
       lab.style.width = '100%';
       lab.value = st.label || '';
       lab.placeholder = (j+1) + '단계';
       lab.oninput = () => st.label = lab.value;
-      tdL.appendChild(lab);
+      step.appendChild(lab);
 
-      const tdS = document.createElement('td');
-      tdS.className = 'sec';
+      const ctr = document.createElement('div');
+      ctr.className = 'step-ctrls';
+
+      const wat = document.createElement('input');
+      wat.type = 'number'; wat.min = '0'; wat.max = '9999';
+      wat.value = st.water || 0;
+      wat.oninput = () => st.water = parseInt(wat.value || '0', 10);
+
       const sec = document.createElement('input');
       sec.type = 'number'; sec.min = '1'; sec.max = '3600';
       sec.value = st.seconds;
       sec.oninput = () => st.seconds = parseInt(sec.value || '0', 10);
-      tdS.appendChild(sec);
-      tdS.appendChild(document.createTextNode(' 초'));
 
-      const tdD = document.createElement('td');
-      tdD.className = 'sec';
       const rm = document.createElement('button');
       rm.className = 'danger small';
       rm.textContent = '×';
       rm.onclick = () => { rec.steps.splice(j,1); render(); };
-      tdD.appendChild(rm);
 
-      tr.appendChild(tdL); tr.appendChild(tdS); tr.appendChild(tdD);
-      tbl.appendChild(tr);
+      ctr.appendChild(document.createTextNode('물'));
+      ctr.appendChild(wat);
+      ctr.appendChild(document.createTextNode('g'));
+      ctr.appendChild(sec);
+      ctr.appendChild(document.createTextNode('초'));
+      ctr.appendChild(rm);
+      step.appendChild(ctr);
+
+      box.appendChild(step);
     });
-    box.appendChild(tbl);
 
     const actions = document.createElement('div');
     actions.className = 'row-actions';
@@ -335,7 +352,7 @@ function render() {
     addStep.textContent = '+ 단계 추가';
     addStep.onclick = () => {
       rec.steps = rec.steps || [];
-      rec.steps.push({ label: '', seconds: 30 });
+      rec.steps.push({ label: '', water: 50, seconds: 30 });
       render();
     };
     actions.appendChild(addStep);
@@ -346,7 +363,7 @@ function render() {
 }
 
 function addRecipe() {
-  data.recipes.push({ name: '새 레시피', steps: [{ label: '뜸들이기', seconds: 30 }] });
+  data.recipes.push({ name: '새 레시피', steps: [{ label: '뜸들이기', water: 40, seconds: 30 }] });
   render();
 }
 
@@ -523,6 +540,39 @@ void drawConfirm(bool visible) {
   }
 }
 
+// 단계 시작 시 목표 물량을 3초간 크게 노출
+void drawStepIntro() {
+  Recipe& r = recipes[selectedRecipe];
+  Step& s = r.steps[currentStep];
+  int w = M5.Display.width(), h = M5.Display.height();
+  M5.Display.fillScreen(TFT_NAVY);
+
+  M5.Display.setTextDatum(top_center);
+  M5.Display.setTextColor(TFT_CYAN, TFT_NAVY);
+  M5.Display.setTextSize(1);
+  char head[24];
+  snprintf(head, sizeof(head), "단계 %d/%d", currentStep + 1, (int)r.steps.size());
+  M5.Display.drawString(head, w/2, 6);
+
+  // 단계 라벨
+  M5.Display.setTextColor(TFT_WHITE, TFT_NAVY);
+  M5.Display.drawString(s.label, w/2, 26);
+
+  // 큰 물량 (예: 70g)  ※ Font7에는 'g'가 없어 한글 폰트를 키워서 표시
+  M5.Display.setTextDatum(middle_center);
+  M5.Display.setTextColor(TFT_WHITE, TFT_NAVY);
+  char wbuf[12];
+  snprintf(wbuf, sizeof(wbuf), "%dg", s.water);
+  int wlen = strlen(wbuf);
+  int wsize = wlen <= 3 ? 4 : (wlen <= 4 ? 3 : 2);   // 화면 폭에 맞춰 크기 조정
+  M5.Display.setTextSize(wsize);
+  M5.Display.drawString(wbuf, w/2, h/2 + 6);
+
+  M5.Display.setTextSize(1);
+  M5.Display.setTextColor(TFT_LIGHTGREY, TFT_NAVY);
+  M5.Display.drawString("물 붓기", w/2, h - 16);
+}
+
 void drawRunning(int remaining) {
   Recipe& r = recipes[selectedRecipe];
   Step& s = r.steps[currentStep];
@@ -595,14 +645,28 @@ void enterConfirm() {
   drawConfirm(true);   // 첫 깜빡임 "켜짐" 프레임
 }
 
-void startRecipe() {
-  state = STATE_RUNNING;
-  currentStep = 0;
-  stepStartMs = millis();
+// 현재 단계를 시작: 물량이 있으면 3초 노출 후 카운트다운, 없으면 바로 카운트다운
+void beginCurrentStep() {
+  Step& s = recipes[selectedRecipe].steps[currentStep];
   lastShownSecond = -1;
   warnBeeped = false;
   lastTickSecond = -1;
+  if (s.water > 0) {
+    stepIntro = true;
+    stepIntroEndMs = millis() + INTRO_MS;
+    drawStepIntro();
+  } else {
+    stepIntro = false;
+    stepStartMs = millis();
+    drawRunning(s.seconds);
+  }
+}
+
+void startRecipe() {
+  state = STATE_RUNNING;
+  currentStep = 0;
   beep(1500, 120);   // 시작 비프
+  beginCurrentStep();
 }
 
 void enterDone() {
@@ -617,10 +681,7 @@ void nextStepOrFinish() {
   if (currentStep >= (int)recipes[selectedRecipe].steps.size()) {
     enterDone();
   } else {
-    stepStartMs = millis();
-    lastShownSecond = -1;
-    warnBeeped = false;
-    lastTickSecond = -1;
+    beginCurrentStep();
   }
 }
 
@@ -697,6 +758,26 @@ void loop() {
     }
 
     case STATE_RUNNING: {
+      // 물량 노출 단계 (3초)
+      if (stepIntro) {
+        if (sidePressed) {           // 취소
+          buzzerStop();
+          beep(400, 100);
+          enterSelect();
+          break;
+        }
+        if (millis() < stepIntroEndMs) {
+          break;                     // 물량 화면 유지
+        }
+        // 물량 노출 종료 -> 카운트다운 시작
+        stepIntro = false;
+        stepStartMs = millis();
+        lastShownSecond = -1;
+        warnBeeped = false;
+        lastTickSecond = -1;
+        beep(1000, 60);              // 카운트다운 시작 신호
+      }
+
       Step& s = recipes[selectedRecipe].steps[currentStep];
       unsigned long el = millis() - stepStartMs;
       int remaining = (int)s.seconds - (int)(el / 1000);
