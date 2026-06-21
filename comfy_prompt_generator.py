@@ -143,6 +143,9 @@ SHOT_SIZES = [
     ("전신", "full-body", "full body shot"),
     ("와이드샷(멀리)", "wide", "wide shot"),
     ("롱샷(아주 멀리)", "long", "extreme long shot, scenery"),
+    ("뒷모습 전신", "back-full", "from behind, full body, back view"),
+    ("뒷모습 상반신", "back-upper", "from behind, upper body, back view"),
+    ("뒷모습 클로즈업", "back-closeup", "from behind, close-up, back view"),
 ]
 
 CAMERA_ANGLES = [
@@ -152,7 +155,12 @@ CAMERA_ANGLES = [
     ("로우앵글(아래에서)", "low", "from below, low angle"),
     ("하이앵글(위에서)", "high", "from above, high angle"),
     ("버드아이뷰", "birdseye", "bird's-eye view"),
-    ("더치앵글(기울임)", "dutch", "dutch angle"),
+    ("더치앵글(기울임)", "dutch", "dutch angle, tilted view"),
+    ("어안(피시아이)", "fisheye", "fisheye lens, distorted perspective"),
+    ("광각", "wide-angle", "wide-angle lens"),
+    ("3/4 시점", "three-quarter", "three-quarter view"),
+    ("정수리뷰(머리 위)", "overhead", "overhead shot, from directly above"),
+    ("올려다봄", "looking-up", "looking up at subject"),
     ("POV(1인칭)", "pov", "pov"),
     ("뒤에서(뒷모습)", "behind", "from behind, back view"),
 ]
@@ -387,7 +395,8 @@ def build_positive(style: str, subject: str | None = None,
                    count: str = "solo", main_subject: str | None = None,
                    main_focus: bool = False, character: str | None = None,
                    background: str | None = None,
-                   situation: str | None = None) -> str:
+                   situation: str | None = None,
+                   emphasis: bool = False, emphasis_weight: float = 1.4) -> str:
     """긍정문(positive) 프롬프트 생성.
 
     인물/배경/상황을 따로 받는다.
@@ -446,11 +455,14 @@ def build_positive(style: str, subject: str | None = None,
         parts.append(expression)
     if situation:
         parts.append(situation)
-    # (5) 샷 / 앵글
+    # (5) 샷 / 앵글 — emphasis 면 가중치로 강하게 주입
+    def emph(tag: str) -> str:
+        return f"({tag}:{emphasis_weight:g})" if emphasis else tag
+
     if shot:
-        parts.append(shot)
+        parts.append(emph(shot))
     if angle:
-        parts.append(angle)
+        parts.append(emph(angle))
     # (6) 플레이버 — 인물을 직접 적었으면 랜덤 외형은 생략
     if not person_specified:
         parts += pick("appearance", 2)
@@ -541,6 +553,11 @@ def run_cli(argv: list[str]) -> int:
                         help="다수일 때 주인공 묘사")
     parser.add_argument("--main-focus", dest="main_focus", action="store_true",
                         help="주인공에 가중치+solo focus 로 강조")
+    parser.add_argument("--no-emphasis", dest="emphasis", action="store_false",
+                        default=True,
+                        help="샷/앵글 가중치 강조를 끔 (기본은 강조 ON)")
+    parser.add_argument("--emph-weight", dest="emph_weight", type=float,
+                        default=1.4, help="샷/앵글 강조 가중치 (기본 1.4)")
     parser.add_argument("--translate", action="store_true",
                         help="주제/주인공의 한글을 영어로 자동 변환(온라인+사전 폴백)")
     parser.add_argument("--offline-translate", dest="offline_tr",
@@ -611,7 +628,8 @@ def run_cli(argv: list[str]) -> int:
             randomize=args.randomize, seed=seed, shot=shot_tag,
             angle=angle_tag, expression=expr_tag, poses=pose_tags,
             count=args.count, main_subject=fields["main_subject"],
-            main_focus=args.main_focus,
+            main_focus=args.main_focus, emphasis=args.emphasis,
+            emphasis_weight=args.emph_weight,
         )
         header = f" 프롬프트 #{i + 1} [{args.style}] "
         print("\n" + header.center(60, "="))
@@ -664,6 +682,11 @@ def run_gui() -> int:
     ttk.Checkbutton(top, text="한글 자동 번역",
                     variable=translate_var,
                     command=lambda: do_generate()).grid(row=0, column=3,
+                                                        sticky="w", padx=(8, 0))
+    emphasis_var = tk.BooleanVar(value=True)
+    ttk.Checkbutton(top, text="시점·샷 강조(가중치)",
+                    variable=emphasis_var,
+                    command=lambda: do_generate()).grid(row=0, column=4,
                                                         sticky="w", padx=(8, 0))
 
     # 인물 / 배경 / 상황 — 각각 따로 입력
@@ -809,7 +832,7 @@ def run_gui() -> int:
             angle=CAMERA_ANGLES[angle_combo.current()][2],
             expression=EXPRESSIONS[expr_combo.current()][2], poses=poses,
             count=count_var.get(), main_subject=vals["main_subject"],
-            main_focus=main_focus_var.get(),
+            main_focus=main_focus_var.get(), emphasis=emphasis_var.get(),
         )
         set_text(pos_text, result["positive"])
         set_text(neg_text, result["negative"])

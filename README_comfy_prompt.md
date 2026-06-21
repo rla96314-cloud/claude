@@ -45,8 +45,10 @@ python comfy_prompt_generator.py --cli --list
 | `--background` | 배경/장소 (예: `"rainy neon city"`) |
 | `--situation` | 상황/행동/분위기 (예: `"drinking coffee, relaxed"`) |
 | `--subject` | (구) 단일 주제 — `--character` 의 별칭(하위호환) |
-| `--shot` | 샷 크기: `closeup` `portrait` `upper-body` `medium` `cowboy` `full-body` `wide` `long` … |
-| `--angle` | 앵글: `front` `side` `low` `high` `birdseye` `dutch` `pov` `behind` |
+| `--shot` | 샷 크기: `closeup` `portrait` `upper-body` `cowboy` `full-body` `wide` `long` `back-full` `back-upper` `back-closeup` … |
+| `--angle` | 앵글: `front` `side` `low` `high` `birdseye` `dutch` `fisheye` `wide-angle` `three-quarter` `overhead` `looking-up` `pov` `behind` |
+| `--no-emphasis` | 샷/앵글 가중치 강조 끄기 (기본은 강조 ON) |
+| `--emph-weight` | 강조 가중치 값 (기본 1.4, 예: 1.6 더 강하게) |
 | `--expr` | 표정: `smile` `happy` `serious` `sad` `angry` `surprised` `shy` `wink` `crying` … |
 | `--pose` | 포즈 (여러 번 사용 가능): `standing` `sitting` `action` `dancing` `fighting` … |
 | `--count` | 인원수: `solo` `2` `3` `4` `crowd` (기본 solo) |
@@ -69,6 +71,15 @@ python comfy_prompt_generator.py --cli --list
 - **상황**은 행동·분위기 태그로 들어갑니다.
 예) 인물 `korean girl, black hair` / 배경 `rainy neon city` /
 상황 `drinking coffee, relaxed`
+
+### 뒷모습 & 시점 강조
+- 샷 크기에 **뒷모습 전신/상반신/클로즈업**(`back-full`/`back-upper`/
+  `back-closeup`)을 추가했습니다. `from behind, ... , back view` 가 함께 들어가
+  뒷모습이 더 잘 잡힙니다.
+- 앵글에 **어안(fisheye) · 광각(wide-angle) · 3/4 시점 · 정수리뷰 · 올려다봄**
+  등을 추가했습니다.
+- **시점·샷 강조(가중치)** 가 기본 ON 이라, 선택한 샷/앵글이 `(태그:1.4)` 로
+  강하게 주입됩니다. 잘 안 먹으면 `--emph-weight 1.6` 처럼 더 올리세요.
 
 ### 샷 · 앵글 · 표정 · 포즈 · 인원수 — GUI에서 선택하면 바로 적용
 GUI 의 **샷 크기 / 앵글 / 표정**(드롭다운), **포즈**(체크, 다중),
