@@ -65,6 +65,40 @@ PURPLE = "#6c5ce7"
 PURPLE_HOVER = "#5a4fcf"
 MAX_CHARS = 1500
 
+# 자세(포즈) 30종 — 의미가 겹치지 않게 선별. (라벨, 영어 태그)
+POSES_30 = [
+    ("서기", "standing"),
+    ("앉기", "sitting"),
+    ("무릎꿇기", "kneeling"),
+    ("쪼그려앉기", "squatting"),
+    ("걷기", "walking"),
+    ("달리기", "running"),
+    ("점프", "jumping"),
+    ("눕기", "lying down"),
+    ("엎드리기", "lying on stomach"),
+    ("기대기", "leaning against wall"),
+    ("팔짱", "crossed arms"),
+    ("허리에손", "hands on hips"),
+    ("손흔들기", "waving"),
+    ("손뻗기", "reaching out"),
+    ("가리키기", "pointing"),
+    ("만세", "arms raised"),
+    ("뒤돌아보기", "looking back"),
+    ("옆보기", "looking to the side"),
+    ("위보기", "looking up"),
+    ("아래보기", "looking down"),
+    ("춤추기", "dancing"),
+    ("전투자세", "fighting stance"),
+    ("달려들기", "lunging forward"),
+    ("발차기", "kicking"),
+    ("스트레칭", "stretching"),
+    ("웅크리기", "crouching"),
+    ("기지개", "arching back"),
+    ("무기들기", "holding a weapon"),
+    ("머리만지기", "hand in own hair"),
+    ("턱괴기", "hand on chin"),
+]
+
 
 def _rows(rows3):
     """(라벨, 슬러그, 태그) 3-튜플 표 → [(라벨, 태그)]."""
@@ -240,18 +274,21 @@ class PromptStudio(ctk.CTk):
         self.emo_menu, self.emo_map = s.add_menu("감정", EXPRS)
         self.mood_menu, self.mood_map = s.add_menu("분위기", MOODS)
 
-        # 자세 / 포즈 (다중 선택)
+        # 자세 / 포즈 (다중 선택, 30종 / 3열)
         s = Section(scroll, "자세 / 포즈")
         s.pack(fill="x")
         pose_box = ctk.CTkFrame(s.body, fg_color="transparent")
         pose_box.grid(row=0, column=0, columnspan=2, sticky="w")
+        POSE_COLS = 3
         self.pose_vars: dict[str, ctk.BooleanVar] = {}
-        for idx, (label, _, tag) in enumerate(engine.POSES):
+        for idx, (label, tag) in enumerate(POSES_30):
             var = ctk.BooleanVar()
             self.pose_vars[tag] = var
-            ctk.CTkCheckBox(pose_box, text=label, variable=var,
-                            checkbox_width=18, checkbox_height=18).grid(
-                row=idx // 2, column=idx % 2, sticky="w", padx=4, pady=3)
+            ctk.CTkCheckBox(pose_box, text=label, variable=var, width=104,
+                            checkbox_width=18, checkbox_height=18,
+                            font=ctk.CTkFont(size=12)).grid(
+                row=idx // POSE_COLS, column=idx % POSE_COLS,
+                sticky="w", padx=2, pady=3)
 
         # 의상 / 소품
         s = Section(scroll, "의상 / 소품")
