@@ -9,19 +9,21 @@ ComfyUI / Stable Diffusion 용 긍정문(positive) · 부정문(negative) 프롬
 - GUI 모드:  python comfy_prompt_generator.py
 - CLI 모드:  python comfy_prompt_generator.py --cli ...
 
-지원 스타일: realistic(실사) / anime(애니) / fantasy(판타지/컨셉아트)
-옵션      : 샷 크기(shot) / 포즈(pose) / 인원수(count) / 주인공 지정(main)
+스타일 : realistic(실사) / anime(애니) / fantasy(판타지/컨셉아트)
+옵션   : 샷(shot) / 앵글(angle) / 표정(expression) / 포즈(pose) /
+         인원수(count) / 주인공 지정(main) / 한글 자동 번역(--translate)
 
 CLI 예시
 --------
-  # 실사 인물, 전신, 서 있는 포즈
-  python comfy_prompt_generator.py --cli --style realistic --shot full-body --pose standing
+  # 실사, 전신, 로우앵글, 미소
+  python comfy_prompt_generator.py --cli --style realistic \
+      --shot full-body --angle low --expr smile --pose standing
 
-  # 애니, 2명에서 빨강머리 기사를 주인공으로 강조
+  # 애니, 2명에서 주인공 강조 (한글 입력 자동 번역)
   python comfy_prompt_generator.py --cli --style anime --count 2 \
-      --main "red-haired knight" --main-focus
+      --main "빨간머리 기사" --main-focus --translate
 
-  # 사용 가능한 태그/옵션 목록 보기
+  # 옵션/태그 목록
   python comfy_prompt_generator.py --cli --list
 """
 
@@ -29,6 +31,7 @@ from __future__ import annotations
 
 import argparse
 import random
+import re
 import sys
 import textwrap
 
@@ -43,8 +46,9 @@ STYLES = {
             "photorealistic", "RAW photo", "high resolution",
         ],
         "subject": [
-            "1girl", "1boy", "portrait of a woman", "portrait of a man",
+            "portrait of a woman", "portrait of a man",
             "elderly fisherman", "young athlete", "businesswoman",
+            "street musician", "ballet dancer",
         ],
         "appearance": [
             "detailed skin texture", "freckles", "natural makeup",
@@ -71,8 +75,8 @@ STYLES = {
             "highly detailed", "absurdres",
         ],
         "subject": [
-            "1girl", "1boy", "2girls", "chibi character",
             "magical girl", "samurai warrior", "school student",
+            "idol singer", "swordsman", "witch", "knight",
         ],
         "appearance": [
             "long flowing hair", "twin tails", "cat ears", "heterochromia",
@@ -88,8 +92,8 @@ STYLES = {
             "sunset glow", "neon lights", "god rays",
         ],
         "camera": [
-            "dynamic angle", "depth of field", "cowboy shot",
-            "upper body", "wide shot", "detailed background",
+            "dynamic angle", "depth of field", "detailed background",
+            "lens flare", "vignette", "wide shot",
         ],
     },
     "fantasy": {
@@ -117,62 +121,168 @@ STYLES = {
             "moody fog", "backlit silhouette", "magical aura",
         ],
         "camera": [
-            "epic wide shot", "low angle", "matte painting", "8k",
-            "unreal engine render", "octane render",
+            "epic wide shot", "matte painting", "8k",
+            "unreal engine render", "octane render", "depth of field",
         ],
     },
 }
 
 # ---------------------------------------------------------------------------
-# 2. 공통 옵션 (모든 스타일에 직접 적용) — (한글 라벨, 영어 태그)
+# 2. 공통 옵션 — (한글 라벨, CLI 슬러그, 영어 태그)
+#    GUI/CLI 가 같은 표를 공유한다 (중복 정의 제거).
+#    슬러그가 "" 인 항목은 '지정 안 함' 이며 CLI 선택지에서 제외된다.
 # ---------------------------------------------------------------------------
-# 샷 크기: 단일 선택
 SHOT_SIZES = [
-    ("지정 안 함", ""),
-    ("클로즈업(얼굴)", "extreme close-up, face focus"),
-    ("포트레이트(얼굴~어깨)", "portrait"),
-    ("상반신", "upper body"),
-    ("카우보이샷(허벅지 위)", "cowboy shot"),
-    ("전신", "full body shot"),
-    ("와이드샷(멀리)", "wide shot"),
+    ("지정 안 함", "", ""),
+    ("익스트림 클로즈업", "extreme-closeup", "extreme close-up"),
+    ("클로즈업(얼굴)", "closeup", "close-up, face focus"),
+    ("포트레이트(얼굴~어깨)", "portrait", "portrait"),
+    ("상반신", "upper-body", "upper body"),
+    ("미디엄샷(허리 위)", "medium", "medium shot"),
+    ("카우보이샷(허벅지 위)", "cowboy", "cowboy shot"),
+    ("전신", "full-body", "full body shot"),
+    ("와이드샷(멀리)", "wide", "wide shot"),
+    ("롱샷(아주 멀리)", "long", "extreme long shot, scenery"),
 ]
 
-# 포즈: 다중 선택(체크)
+CAMERA_ANGLES = [
+    ("지정 안 함", "", ""),
+    ("정면", "front", "front view"),
+    ("측면", "side", "side view"),
+    ("로우앵글(아래에서)", "low", "from below, low angle"),
+    ("하이앵글(위에서)", "high", "from above, high angle"),
+    ("버드아이뷰", "birdseye", "bird's-eye view"),
+    ("더치앵글(기울임)", "dutch", "dutch angle"),
+    ("POV(1인칭)", "pov", "pov"),
+    ("뒤에서", "behind", "from behind"),
+]
+
+EXPRESSIONS = [
+    ("지정 안 함", "", ""),
+    ("미소", "smile", "smile"),
+    ("활짝 웃음", "happy", "happy, open mouth, laughing"),
+    ("무표정", "neutral", "expressionless"),
+    ("진지함", "serious", "serious expression"),
+    ("슬픔", "sad", "sad"),
+    ("화남", "angry", "angry"),
+    ("놀람", "surprised", "surprised"),
+    ("부끄러움", "shy", "blush, shy"),
+    ("윙크", "wink", "wink, one eye closed"),
+    ("울음", "crying", "crying, tears"),
+]
+
+# 포즈: 다중 선택(체크) — (라벨, 슬러그, 태그)
 POSES = [
-    ("서 있음", "standing"),
-    ("앉아 있음", "sitting"),
-    ("걷기", "walking"),
-    ("달리기", "running"),
-    ("역동적 액션", "dynamic action pose"),
-    ("누워 있음", "lying down"),
-    ("뒤돌아봄", "from behind"),
-    ("기대어 있음", "leaning"),
-    ("점프", "jumping"),
-    ("정면 응시", "looking at viewer"),
+    ("서 있음", "standing", "standing"),
+    ("앉아 있음", "sitting", "sitting"),
+    ("무릎 꿇기", "kneeling", "kneeling"),
+    ("걷기", "walking", "walking"),
+    ("달리기", "running", "running"),
+    ("역동적 액션", "action", "dynamic action pose"),
+    ("누워 있음", "lying", "lying down"),
+    ("기대어 있음", "leaning", "leaning"),
+    ("점프", "jumping", "jumping"),
+    ("춤추기", "dancing", "dancing"),
+    ("싸우는 자세", "fighting", "fighting stance"),
+    ("팔짱", "arms-crossed", "crossed arms"),
+    ("손 흔들기", "waving", "waving"),
+    ("스트레칭", "stretching", "stretching"),
+    ("정면 응시", "look-viewer", "looking at viewer"),
 ]
 
-# 인원수: 단일 선택. (라벨, key, 실제 태그)
+# 인원수: 단일 선택 — (라벨, key, 태그)
 COUNTS = [
     ("1명 (solo)", "solo", "solo"),
     ("2명", "2", "2people, two characters"),
     ("3명", "3", "3people, group of three"),
+    ("4명", "4", "4people, group"),
     ("여러 명/군중", "crowd", "crowd, multiple people"),
 ]
+
+# --- 위 표에서 파생되는 조회용 딕셔너리 (단일 진실 공급원) ---
+def _cli_map(rows: list[tuple[str, str, str]]) -> dict[str, str]:
+    """(라벨, 슬러그, 태그) 표에서 슬러그→태그 딕셔너리 생성 (빈 슬러그 제외)."""
+    return {slug: tag for _, slug, tag in rows if slug}
+
+
+SHOT_CLI = _cli_map(SHOT_SIZES)
+ANGLE_CLI = _cli_map(CAMERA_ANGLES)
+EXPR_CLI = _cli_map(EXPRESSIONS)
+POSE_CLI = _cli_map(POSES)
 COUNT_TAG = {key: tag for _, key, tag in COUNTS}
 
-# CLI용 샷 키 매핑 (full-body 등 입력 편의)
-SHOT_CLI = {
-    "close-up": "extreme close-up, face focus",
-    "portrait": "portrait",
-    "upper-body": "upper body",
-    "cowboy": "cowboy shot",
-    "full-body": "full body shot",
-    "wide": "wide shot",
+# ---------------------------------------------------------------------------
+# 3. 한글 → 영어 태그 사전 (오프라인 간이 번역)
+# ---------------------------------------------------------------------------
+# 자유 입력(주제/주인공)에 쓰인 한글 단어를 영어 태그로 치환한다.
+# 긴 표현부터 먼저 치환하므로 '빨간머리' 가 '빨간'보다 우선한다.
+KO_EN = {
+    # 머리색
+    "빨간머리": "red hair", "빨강머리": "red hair", "금발": "blonde hair",
+    "흑발": "black hair", "검은머리": "black hair", "갈색머리": "brown hair",
+    "은발": "silver hair", "백발": "white hair", "파란머리": "blue hair",
+    "분홍머리": "pink hair", "보라머리": "purple hair", "초록머리": "green hair",
+    # 머리모양
+    "긴머리": "long hair", "단발": "short hair", "트윈테일": "twintails",
+    "포니테일": "ponytail", "곱슬머리": "curly hair", "땋은머리": "braided hair",
+    "머리": "hair",
+    # 눈
+    "파란눈": "blue eyes", "갈색눈": "brown eyes", "초록눈": "green eyes",
+    "빨간눈": "red eyes", "금색눈": "golden eyes",
+    # 인물
+    "소녀": "1girl", "여자": "1girl", "여성": "woman", "소년": "1boy",
+    "남자": "1boy", "남성": "man", "아이": "child", "할아버지": "old man",
+    "할머니": "old woman",
+    # 직업/종족
+    "기사": "knight", "마법사": "mage", "전사": "warrior", "궁수": "archer",
+    "닌자": "ninja", "사무라이": "samurai", "공주": "princess", "왕자": "prince",
+    "왕": "king", "여왕": "queen", "메이드": "maid", "천사": "angel",
+    "악마": "demon", "마녀": "witch", "흡혈귀": "vampire", "로봇": "robot",
+    "기계": "mecha", "용": "dragon", "드래곤": "dragon", "엘프": "elf",
+    "고양이귀": "cat ears", "여우귀": "fox ears", "해적": "pirate",
+    # 의상
+    "교복": "school uniform", "기모노": "kimono", "드레스": "dress",
+    "갑옷": "armor", "정장": "suit", "후드티": "hoodie", "수영복": "swimsuit",
+    "코트": "coat", "망토": "cloak", "로브": "robe", "치마": "skirt",
+    "셔츠": "shirt", "바지": "pants",
+    # 색
+    "빨간": "red", "빨강": "red", "파란": "blue", "파랑": "blue",
+    "초록": "green", "노란": "yellow", "노랑": "yellow", "검은": "black",
+    "검정": "black", "하얀": "white", "흰": "white", "보라": "purple",
+    "분홍": "pink", "주황": "orange", "금색": "gold", "은색": "silver",
+    # 소품
+    "안경": "glasses", "모자": "hat", "검": "sword", "칼": "sword",
+    "활": "bow", "방패": "shield", "지팡이": "staff", "총": "gun",
+    "날개": "wings", "꽃": "flowers", "왕관": "crown",
+    # 배경/날씨
+    "밤": "night", "낮": "daytime", "비": "rain", "눈내림": "snow",
+    "눈오는": "snowing", "숲": "forest", "도시": "city", "바다": "ocean",
+    "하늘": "sky", "성": "castle", "우주": "space", "사막": "desert",
+    "산": "mountains", "벚꽃": "cherry blossoms",
 }
-POSE_CLI = {tag.split(",")[0].replace(" ", "-"): tag for _, tag in POSES}
+
+
+def _has_hangul(text: str) -> bool:
+    return any("가" <= ch <= "힣" for ch in text)
+
+
+_TOKEN_SPLIT = re.compile(r"([,\s]+)")
+
+
+def translate_korean(text: str | None) -> str | None:
+    """한글 단어를 영어 태그로 치환.
+
+    공백/쉼표로 나뉜 '단어 단위'로만 치환한다. 사전에 없는 한글 단어는
+    그대로 둔다(부분 치환으로 '용감한'→'dragon감한' 처럼 망가지는 것 방지).
+    '빨간머리'(붙여쓰기)와 '빨간 머리'(띄어쓰기) 둘 다 사전에 있으면 변환됨.
+    """
+    if not text:
+        return text
+    return "".join(KO_EN.get(tok, tok) for tok in _TOKEN_SPLIT.split(text))
+
 
 # ---------------------------------------------------------------------------
-# 3. 부정문(negative) 프리셋
+# 4. 부정문(negative) 프리셋
 # ---------------------------------------------------------------------------
 NEGATIVE_COMMON = [
     "lowres", "bad anatomy", "bad hands", "extra digits", "fewer digits",
@@ -199,7 +309,7 @@ NEGATIVE_BY_STYLE = {
 
 
 # ---------------------------------------------------------------------------
-# 4. 프롬프트 빌드 로직
+# 5. 프롬프트 빌드 로직
 # ---------------------------------------------------------------------------
 def _dedupe(parts: list[str]) -> list[str]:
     seen: set[str] = set()
@@ -208,27 +318,18 @@ def _dedupe(parts: list[str]) -> list[str]:
 
 def build_positive(style: str, subject: str | None = None,
                    randomize: bool = True, seed: int | None = None,
-                   shot: str = "", poses: list[str] | None = None,
+                   shot: str = "", angle: str = "",
+                   expression: str = "", poses: list[str] | None = None,
                    count: str = "solo", main_subject: str | None = None,
                    main_focus: bool = False) -> str:
-    """긍정문(positive) 프롬프트를 만든다.
-
-    style        : STYLES 키 (realistic / anime / fantasy)
-    subject      : 사용자가 직접 지정한 주제. 없으면 라이브러리에서 선택.
-    randomize    : True 면 플레이버 태그(외형/장면/조명)를 무작위로 선택.
-    seed         : 재현 가능한 랜덤 시드.
-    shot         : 샷 크기 태그(영어). 빈 문자열이면 미지정.
-    poses        : 포즈 태그(영어) 리스트.
-    count        : 인원수 key (solo / 2 / 3 / crowd).
-    main_subject : 다수일 때 '주인공' 묘사. (예: "red-haired knight")
-    main_focus   : True 면 주인공에 가중치 + solo focus 로 강조.
-    """
+    """긍정문(positive) 프롬프트 생성. (옵션은 build_* docstring 참고)"""
     if style not in STYLES:
         raise ValueError(f"알 수 없는 스타일: {style!r} (가능: {', '.join(STYLES)})")
 
     rng = random.Random(seed)
     data = STYLES[style]
     poses = poses or []
+    multi = count not in ("solo", None, "")
 
     def pick(category: str, k: int = 1) -> list[str]:
         pool = data[category]
@@ -236,54 +337,53 @@ def build_positive(style: str, subject: str | None = None,
             return rng.sample(pool, min(k, len(pool)))
         return pool[:k]
 
+    def pick_subject() -> str:
+        # 인원수 태그가 숫자를 책임지므로, 자동 선택 풀에서는 '1girl/2girls'
+        # 같이 숫자로 시작하는 주제를 제외해 'solo, 2girls' 모순을 막는다.
+        pool = [s for s in data["subject"] if not s[:1].isdigit()] or data["subject"]
+        return rng.choice(pool) if randomize else pool[0]
+
     parts: list[str] = []
     # (1) 품질
     parts += pick("quality", 3 if randomize else 2)
-
-    multi = count not in ("solo", None, "")
-
     # (2) 인원수
     parts.append(COUNT_TAG.get(count, ""))
-
     # (3) 주제 / 주인공
     if multi and main_subject:
-        if main_focus:
-            # 주인공 강조: 가중치 + solo focus + 시선 유도
-            parts.append(f"({main_subject.strip()}:1.3)")
-            parts.append("solo focus")
-            parts.append("looking at viewer")
+        if main_focus:  # 가중치 + solo focus + 시선 유도
+            parts += [f"({main_subject.strip()}:1.3)", "solo focus",
+                      "looking at viewer"]
         else:
             parts.append(main_subject.strip())
     elif subject:
         parts.append(subject.strip())
     else:
-        parts += pick("subject", 1)
-
-    # (4) 포즈 (직접 적용)
+        parts.append(pick_subject())
+    # (4) 포즈 / 표정
     parts += poses
-
-    # (5) 샷 크기 (직접 적용)
+    if expression:
+        parts.append(expression)
+    # (5) 샷 / 앵글
     if shot:
         parts.append(shot)
-
+    if angle:
+        parts.append(angle)
     # (6) 플레이버
     parts += pick("appearance", 2)
     parts += pick("scene", 1)
     parts += pick("lighting", 1)
-    if not shot:  # 샷을 지정했으면 카메라 프레이밍 태그는 생략
+    if not shot and not angle:  # 프레이밍을 안 정했으면 카메라 태그 보강
         parts += pick("camera", 1)
 
     return ", ".join(_dedupe(parts))
 
 
 def build_negative(style: str) -> str:
-    """부정문(negative) 프롬프트를 만든다."""
     tags = list(NEGATIVE_COMMON) + NEGATIVE_BY_STYLE.get(style, [])
     return ", ".join(_dedupe(tags))
 
 
 def generate(style: str, **kwargs) -> dict:
-    """positive / negative 를 함께 반환."""
     return {
         "style": style,
         "positive": build_positive(style, **kwargs),
@@ -291,7 +391,6 @@ def generate(style: str, **kwargs) -> dict:
     }
 
 
-# 주인공 지정 방법 설명 (GUI 버튼 / CLI --help-main 공용)
 MAIN_GUIDE = """\
 [ 다수 인물에서 '주인공'을 정하는 방법 ]
 
@@ -321,7 +420,7 @@ MAIN_GUIDE = """\
 
 
 # ---------------------------------------------------------------------------
-# 5. CLI
+# 6. CLI
 # ---------------------------------------------------------------------------
 def run_cli(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(
@@ -337,6 +436,10 @@ def run_cli(argv: list[str]) -> int:
                         default=True, help="무작위 대신 대표 태그 사용")
     parser.add_argument("--shot", choices=list(SHOT_CLI), default=None,
                         help="샷 크기: " + ", ".join(SHOT_CLI))
+    parser.add_argument("--angle", choices=list(ANGLE_CLI), default=None,
+                        help="카메라 앵글: " + ", ".join(ANGLE_CLI))
+    parser.add_argument("--expr", choices=list(EXPR_CLI), default=None,
+                        help="표정: " + ", ".join(EXPR_CLI))
     parser.add_argument("--pose", action="append", default=[],
                         choices=list(POSE_CLI),
                         help="포즈(여러 번 사용 가능): " + ", ".join(POSE_CLI))
@@ -346,8 +449,10 @@ def run_cli(argv: list[str]) -> int:
                         help="다수일 때 주인공 묘사")
     parser.add_argument("--main-focus", dest="main_focus", action="store_true",
                         help="주인공에 가중치+solo focus 로 강조")
-    parser.add_argument("-n", "--count-out", dest="count_out", type=int,
-                        default=1, help="생성할 프롬프트 개수")
+    parser.add_argument("--translate", action="store_true",
+                        help="주제/주인공의 한글을 영어 태그로 자동 변환")
+    parser.add_argument("-n", "--num", dest="num", type=int, default=1,
+                        help="생성할 프롬프트 개수")
     parser.add_argument("--seed", type=int, default=None, help="랜덤 시드")
     parser.add_argument("--list", action="store_true", help="옵션/태그 목록")
     parser.add_argument("--help-main", action="store_true",
@@ -365,20 +470,39 @@ def run_cli(argv: list[str]) -> int:
                 if cat == "label":
                     continue
                 print(f"   - {cat:11s}: {', '.join(tags)}")
-        print("\n■ 샷 크기 (--shot):  " + ", ".join(SHOT_CLI))
-        print("■ 포즈   (--pose) :  " + ", ".join(POSE_CLI))
-        print("■ 인원수 (--count):  " + ", ".join(k for _, k, _ in COUNTS))
+        print("\n■ 샷   (--shot) :  " + ", ".join(SHOT_CLI))
+        print("■ 앵글  (--angle):  " + ", ".join(ANGLE_CLI))
+        print("■ 표정  (--expr) :  " + ", ".join(EXPR_CLI))
+        print("■ 포즈  (--pose) :  " + ", ".join(POSE_CLI))
+        print("■ 인원수(--count):  " + ", ".join(k for _, k, _ in COUNTS))
         return 0
 
+    # 주인공 지정했는데 인원수가 solo 면 자동으로 2명으로 올린다(버그 #2 수정).
+    if args.main_subject and args.count == "solo":
+        print("ℹ️  --main 이 지정되어 인원수를 자동으로 '2명'으로 설정합니다.")
+        args.count = "2"
+
+    subject = args.subject
+    main_subject = args.main_subject
+    if args.translate:
+        subject = translate_korean(subject)
+        main_subject = translate_korean(main_subject)
+        for label, val in (("주제", subject), ("주인공", main_subject)):
+            if val and _has_hangul(val):
+                print(f"⚠️  {label}에 사전에 없는 한글이 남아 있습니다: {val}")
+
     shot_tag = SHOT_CLI.get(args.shot, "") if args.shot else ""
+    angle_tag = ANGLE_CLI.get(args.angle, "") if args.angle else ""
+    expr_tag = EXPR_CLI.get(args.expr, "") if args.expr else ""
     pose_tags = [POSE_CLI[p] for p in args.pose]
 
-    for i in range(max(1, args.count_out)):
+    for i in range(max(1, args.num)):
         seed = args.seed if args.seed is None else args.seed + i
         result = generate(
-            args.style, subject=args.subject, randomize=args.randomize,
-            seed=seed, shot=shot_tag, poses=pose_tags, count=args.count,
-            main_subject=args.main_subject, main_focus=args.main_focus,
+            args.style, subject=subject, randomize=args.randomize,
+            seed=seed, shot=shot_tag, angle=angle_tag, expression=expr_tag,
+            poses=pose_tags, count=args.count, main_subject=main_subject,
+            main_focus=args.main_focus,
         )
         header = f" 프롬프트 #{i + 1} [{args.style}] "
         print("\n" + header.center(60, "="))
@@ -391,7 +515,7 @@ def run_cli(argv: list[str]) -> int:
 
 
 # ---------------------------------------------------------------------------
-# 6. GUI (tkinter)
+# 7. GUI (tkinter)
 # ---------------------------------------------------------------------------
 def run_gui() -> int:
     try:
@@ -407,63 +531,74 @@ def run_gui() -> int:
 
     root = tk.Tk()
     root.title("ComfyUI 프롬프트 생성기")
-    root.geometry("820x760")
-    root.minsize(720, 660)
+    root.geometry("860x820")
+    root.minsize(760, 700)
 
     main = ttk.Frame(root, padding=12)
     main.pack(fill="both", expand=True)
 
-    # --- 상단: 스타일 / 무작위 / 주제 ---
+    # --- 상단: 스타일 / 무작위 / 한글번역 / 주제 ---
     top = ttk.Frame(main)
     top.pack(fill="x", pady=(0, 6))
     ttk.Label(top, text="스타일:").grid(row=0, column=0, sticky="w", padx=(0, 4))
     style_combo = ttk.Combobox(
-        top, state="readonly", width=22,
+        top, state="readonly", width=20,
         values=[f"{k} ({v['label']})" for k, v in STYLES.items()],
     )
     style_combo.current(0)
     style_combo.grid(row=0, column=1, sticky="w", padx=(0, 12))
     randomize_var = tk.BooleanVar(value=True)
     ttk.Checkbutton(top, text="무작위 플레이버",
-                    variable=randomize_var).grid(row=0, column=2, sticky="w")
+                    variable=randomize_var,
+                    command=lambda: do_generate()).grid(row=0, column=2, sticky="w")
+    translate_var = tk.BooleanVar(value=True)
+    ttk.Checkbutton(top, text="한글 자동 번역",
+                    variable=translate_var,
+                    command=lambda: do_generate()).grid(row=0, column=3,
+                                                        sticky="w", padx=(8, 0))
 
     ttk.Label(top, text="주제(선택):").grid(row=1, column=0, sticky="w",
                                          padx=(0, 4), pady=(6, 0))
     subject_var = tk.StringVar()
-    ttk.Entry(top, textvariable=subject_var).grid(
-        row=1, column=1, columnspan=2, sticky="we", pady=(6, 0))
+    subject_entry = ttk.Entry(top, textvariable=subject_var)
+    subject_entry.grid(row=1, column=1, columnspan=3, sticky="we", pady=(6, 0))
+    subject_entry.bind("<KeyRelease>", lambda e: do_generate())
     top.columnconfigure(1, weight=1)
 
-    # --- 옵션: 샷 / 인원수 / 포즈 ---
-    opt = ttk.LabelFrame(main, text="샷 · 포즈 · 인원수 (체크하면 바로 적용)",
+    # --- 옵션: 샷 / 앵글 / 표정 / 인원수 / 포즈 ---
+    opt = ttk.LabelFrame(main, text="샷 · 앵글 · 표정 · 포즈 · 인원수 (선택하면 바로 적용)",
                          padding=8)
     opt.pack(fill="x", pady=6)
 
-    # 샷 크기 (라디오)
-    ttk.Label(opt, text="샷 크기:").grid(row=0, column=0, sticky="nw", pady=2)
-    shot_var = tk.StringVar(value="")
-    shot_box = ttk.Frame(opt)
-    shot_box.grid(row=0, column=1, sticky="w")
-    for label, tag in SHOT_SIZES:
-        ttk.Radiobutton(shot_box, text=label, value=tag,
-                        variable=shot_var,
-                        command=lambda: do_generate()).pack(side="left", padx=2)
+    def add_combo(row, col, label, rows):
+        ttk.Label(opt, text=label).grid(row=row, column=col, sticky="w",
+                                        pady=2, padx=(0 if col == 0 else 12, 4))
+        cb = ttk.Combobox(opt, state="readonly", width=22,
+                          values=[r[0] for r in rows])
+        cb.current(0)
+        cb.grid(row=row, column=col + 1, sticky="w")
+        cb.bind("<<ComboboxSelected>>", lambda e: do_generate())
+        return cb
+
+    shot_combo = add_combo(0, 0, "샷 크기:", SHOT_SIZES)
+    angle_combo = add_combo(0, 2, "앵글:", CAMERA_ANGLES)
+    expr_combo = add_combo(1, 0, "표정:", EXPRESSIONS)
 
     # 인원수 (라디오)
-    ttk.Label(opt, text="인원수:").grid(row=1, column=0, sticky="nw", pady=2)
+    ttk.Label(opt, text="인원수:").grid(row=1, column=2, sticky="w", padx=(12, 4))
     count_var = tk.StringVar(value="solo")
     count_box = ttk.Frame(opt)
-    count_box.grid(row=1, column=1, sticky="w")
+    count_box.grid(row=1, column=3, sticky="w")
     for label, key, _ in COUNTS:
         ttk.Radiobutton(count_box, text=label, value=key, variable=count_var,
-                        command=lambda: on_count_change()).pack(side="left", padx=2)
+                        command=lambda: do_generate()).pack(side="left", padx=2)
 
     # 포즈 (체크, 다중)
-    ttk.Label(opt, text="포즈:").grid(row=2, column=0, sticky="nw", pady=2)
+    ttk.Label(opt, text="포즈:").grid(row=2, column=0, sticky="nw", pady=(6, 2))
     pose_box = ttk.Frame(opt)
-    pose_box.grid(row=2, column=1, sticky="w")
+    pose_box.grid(row=2, column=1, columnspan=3, sticky="w", pady=(6, 0))
     pose_vars: dict[str, tk.BooleanVar] = {}
-    for idx, (label, tag) in enumerate(POSES):
+    for idx, (label, _, tag) in enumerate(POSES):
         var = tk.BooleanVar(value=False)
         pose_vars[tag] = var
         ttk.Checkbutton(pose_box, text=label, variable=var,
@@ -476,18 +611,20 @@ def run_gui() -> int:
     main_frame.pack(fill="x", pady=6)
     ttk.Label(main_frame, text="주인공 묘사:").grid(row=0, column=0, sticky="w")
     main_subject_var = tk.StringVar()
-    main_entry = ttk.Entry(main_frame, textvariable=main_subject_var, width=40)
+    main_entry = ttk.Entry(main_frame, textvariable=main_subject_var, width=38)
     main_entry.grid(row=0, column=1, sticky="we", padx=4)
+    main_entry.bind("<KeyRelease>", lambda e: do_generate())
     main_focus_var = tk.BooleanVar(value=True)
-    ttk.Checkbutton(main_frame, text="주인공 강조 (가중치+solo focus)",
-                    variable=main_focus_var,
-                    command=lambda: do_generate()).grid(row=0, column=2, padx=6)
+    main_focus_chk = ttk.Checkbutton(
+        main_frame, text="주인공 강조 (가중치+solo focus)",
+        variable=main_focus_var, command=lambda: do_generate())
+    main_focus_chk.grid(row=0, column=2, padx=6)
+    # 도움말 버튼은 항상 활성 (solo 에서도 가이드를 볼 수 있게)
     ttk.Button(main_frame, text="❔ 주인공 지정 방법",
                command=lambda: messagebox.showinfo("주인공 지정 방법",
                                                    MAIN_GUIDE)).grid(
         row=1, column=1, sticky="w", pady=(6, 0))
     main_frame.columnconfigure(1, weight=1)
-    main_entry.bind("<KeyRelease>", lambda e: do_generate())
 
     # --- 출력 ---
     out = ttk.Frame(main)
@@ -511,31 +648,31 @@ def run_gui() -> int:
         widget.insert("1.0", value)
 
     def update_main_state() -> None:
-        multi = count_var.get() != "solo"
-        st = "normal" if multi else "disabled"
-        for child in main_frame.winfo_children():
-            try:
-                child.configure(state=st)
-            except tk.TclError:
-                pass
+        # 입력칸/강조 체크만 토글하고, 도움말 버튼은 건드리지 않는다.
+        st = "normal" if count_var.get() != "solo" else "disabled"
+        main_entry.configure(state=st)
+        main_focus_chk.configure(state=st)
 
     def do_generate(new_seed: bool = False) -> None:
         if new_seed or state["seed"] is None:
             state["seed"] = random.randrange(1_000_000_000)
         update_main_state()
+        subject = subject_var.get().strip() or None
+        main_subject = main_subject_var.get().strip() or None
+        if translate_var.get():
+            subject = translate_korean(subject)
+            main_subject = translate_korean(main_subject)
         poses = [tag for tag, v in pose_vars.items() if v.get()]
         result = generate(
-            style_key(), subject=subject_var.get().strip() or None,
-            randomize=randomize_var.get(), seed=state["seed"],
-            shot=shot_var.get(), poses=poses, count=count_var.get(),
-            main_subject=main_subject_var.get().strip() or None,
+            style_key(), subject=subject, randomize=randomize_var.get(),
+            seed=state["seed"], shot=SHOT_SIZES[shot_combo.current()][2],
+            angle=CAMERA_ANGLES[angle_combo.current()][2],
+            expression=EXPRESSIONS[expr_combo.current()][2], poses=poses,
+            count=count_var.get(), main_subject=main_subject,
             main_focus=main_focus_var.get(),
         )
         set_text(pos_text, result["positive"])
         set_text(neg_text, result["negative"])
-
-    def on_count_change() -> None:
-        do_generate()
 
     def copy_to_clipboard(widget) -> None:
         root.clipboard_clear()
@@ -543,7 +680,6 @@ def run_gui() -> int:
         messagebox.showinfo("복사됨", "클립보드에 복사했습니다.")
 
     style_combo.bind("<<ComboboxSelected>>", lambda e: do_generate())
-    subject_var.trace_add("write", lambda *a: None)  # 입력은 생성 시 반영
 
     # --- 버튼 ---
     btns = ttk.Frame(main)
@@ -562,12 +698,11 @@ def run_gui() -> int:
 
 
 # ---------------------------------------------------------------------------
-# 7. 엔트리 포인트
+# 8. 엔트리 포인트
 # ---------------------------------------------------------------------------
 def main() -> int:
     argv = sys.argv[1:]
-    cli_flags = ("--cli", "--list", "--help-main")
-    if any(f in argv for f in cli_flags) or argv:
+    if any(f in argv for f in ("--cli", "--list", "--help-main")) or argv:
         return run_cli(argv)
     return run_gui()
 
