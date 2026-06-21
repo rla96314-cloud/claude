@@ -259,6 +259,27 @@ KO_EN = {
     "눈오는": "snowing", "숲": "forest", "도시": "city", "바다": "ocean",
     "하늘": "sky", "성": "castle", "우주": "space", "사막": "desert",
     "산": "mountains", "벚꽃": "cherry blossoms",
+    # 국적/인종
+    "일본인": "japanese", "한국인": "korean", "중국인": "chinese",
+    "서양인": "western", "동양인": "asian", "흑인": "dark skin",
+    "백인": "pale skin",
+    # 성격/분위기 (표정·인상으로 반영)
+    "건방진": "arrogant", "도도한": "smug", "성격": "personality",
+    "친절한": "friendly", "차가운": "cold expression", "활발한": "cheerful",
+    "수줍은": "shy", "어두운": "gloomy", "당당한": "confident",
+    "사나운": "fierce", "냉정한": "calm", "귀여운": "cute", "섹시한": "sexy",
+    "우아한": "elegant", "강한": "strong", "신비로운": "mysterious",
+    # 나이/체형
+    "젊은": "young", "어린": "young", "늙은": "old", "중년": "middle-aged",
+    "키큰": "tall", "마른": "slim", "근육질": "muscular", "통통한": "chubby",
+    # 색 + '색' 형태
+    "빨간색": "red", "빨강색": "red", "파란색": "blue", "파랑색": "blue",
+    "노란색": "yellow", "노랑색": "yellow", "초록색": "green", "녹색": "green",
+    "검은색": "black", "검정색": "black", "하얀색": "white", "흰색": "white",
+    "보라색": "purple", "분홍색": "pink", "주황색": "orange", "회색": "gray",
+    "갈색": "brown", "금색": "gold", "은색": "silver", "하늘색": "sky blue",
+    "남색": "navy blue", "탁한": "muddy", "밝은": "bright", "어두운색": "dark",
+    "파스텔": "pastel",
 }
 
 
@@ -269,16 +290,59 @@ def _has_hangul(text: str) -> bool:
 _TOKEN_SPLIT = re.compile(r"([,\s]+)")
 
 
-def translate_korean(text: str | None) -> str | None:
-    """한글 단어를 영어 태그로 치환.
+def translate_glossary(text: str | None) -> str | None:
+    """내장 사전으로 단어 단위 치환(오프라인).
 
     공백/쉼표로 나뉜 '단어 단위'로만 치환한다. 사전에 없는 한글 단어는
     그대로 둔다(부분 치환으로 '용감한'→'dragon감한' 처럼 망가지는 것 방지).
-    '빨간머리'(붙여쓰기)와 '빨간 머리'(띄어쓰기) 둘 다 사전에 있으면 변환됨.
     """
     if not text:
         return text
     return "".join(KO_EN.get(tok, tok) for tok in _TOKEN_SPLIT.split(text))
+
+
+def translate_online(text: str, timeout: float = 6.0) -> str:
+    """구글(비공식) 엔드포인트로 임의의 한글을 영어로 번역. 실패 시 예외."""
+    import urllib.request
+    import urllib.parse
+    import json
+
+    url = ("https://translate.googleapis.com/translate_a/single"
+           "?client=gtx&sl=ko&tl=en&dt=t&q=" + urllib.parse.quote(text))
+    req = urllib.request.Request(url, headers={
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+    })
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+    out = "".join(seg[0] for seg in data[0] if seg and seg[0])
+    if not out.strip():
+        raise ValueError("빈 번역 결과")
+    return out
+
+
+def translate_text(text: str | None, online: bool = True,
+                   cache: dict | None = None) -> tuple[str | None, str]:
+    """한글을 영어로 번역. (결과, 엔진) 반환.
+
+    online=True 면 온라인 번역을 먼저 시도하고, 실패하면 내장 사전으로 폴백.
+    엔진 값: 'online' / 'glossary' / 'none'(한글 없음/빈값).
+    """
+    if not text or not _has_hangul(text):
+        return text, "none"
+    if cache is not None and text in cache:
+        return cache[text]
+    result, engine = text, "glossary"
+    if online:
+        try:
+            result, engine = translate_online(text), "online"
+        except Exception:
+            result, engine = translate_glossary(text), "glossary"
+    else:
+        result = translate_glossary(text)
+    pair = (result, engine)
+    if cache is not None:
+        cache[text] = pair
+    return pair
 
 
 # ---------------------------------------------------------------------------
@@ -450,7 +514,10 @@ def run_cli(argv: list[str]) -> int:
     parser.add_argument("--main-focus", dest="main_focus", action="store_true",
                         help="주인공에 가중치+solo focus 로 강조")
     parser.add_argument("--translate", action="store_true",
-                        help="주제/주인공의 한글을 영어 태그로 자동 변환")
+                        help="주제/주인공의 한글을 영어로 자동 변환(온라인+사전 폴백)")
+    parser.add_argument("--offline-translate", dest="offline_tr",
+                        action="store_true",
+                        help="번역 시 온라인을 끄고 내장 사전만 사용")
     parser.add_argument("-n", "--num", dest="num", type=int, default=1,
                         help="생성할 프롬프트 개수")
     parser.add_argument("--seed", type=int, default=None, help="랜덤 시드")
@@ -484,12 +551,16 @@ def run_cli(argv: list[str]) -> int:
 
     subject = args.subject
     main_subject = args.main_subject
-    if args.translate:
-        subject = translate_korean(subject)
-        main_subject = translate_korean(main_subject)
+    if args.translate or args.offline_tr:
+        use_online = not args.offline_tr
+        subject, eng_s = translate_text(subject, online=use_online)
+        main_subject, eng_m = translate_text(main_subject, online=use_online)
+        engines = {e for e in (eng_s, eng_m) if e != "none"}
+        if engines:
+            print(f"🌐 번역 엔진: {', '.join(sorted(engines))}")
         for label, val in (("주제", subject), ("주인공", main_subject)):
             if val and _has_hangul(val):
-                print(f"⚠️  {label}에 사전에 없는 한글이 남아 있습니다: {val}")
+                print(f"⚠️  {label}에 번역 안 된 한글이 남아 있습니다: {val}")
 
     shot_tag = SHOT_CLI.get(args.shot, "") if args.shot else ""
     angle_tag = ANGLE_CLI.get(args.angle, "") if args.angle else ""
@@ -527,7 +598,7 @@ def run_gui() -> int:
         print(f"(원인: {exc})")
         return 1
 
-    state = {"seed": None}
+    state = {"seed": None, "after": None, "tcache": {}}
 
     root = tk.Tk()
     root.title("ComfyUI 프롬프트 생성기")
@@ -562,8 +633,11 @@ def run_gui() -> int:
     subject_var = tk.StringVar()
     subject_entry = ttk.Entry(top, textvariable=subject_var)
     subject_entry.grid(row=1, column=1, columnspan=3, sticky="we", pady=(6, 0))
-    subject_entry.bind("<KeyRelease>", lambda e: do_generate())
+    subject_entry.bind("<KeyRelease>", lambda e: schedule_generate())
     top.columnconfigure(1, weight=1)
+    status_var = tk.StringVar(value="")
+    ttk.Label(top, textvariable=status_var, foreground="#0a7").grid(
+        row=2, column=1, columnspan=3, sticky="w")
 
     # --- 옵션: 샷 / 앵글 / 표정 / 인원수 / 포즈 ---
     opt = ttk.LabelFrame(main, text="샷 · 앵글 · 표정 · 포즈 · 인원수 (선택하면 바로 적용)",
@@ -613,7 +687,7 @@ def run_gui() -> int:
     main_subject_var = tk.StringVar()
     main_entry = ttk.Entry(main_frame, textvariable=main_subject_var, width=38)
     main_entry.grid(row=0, column=1, sticky="we", padx=4)
-    main_entry.bind("<KeyRelease>", lambda e: do_generate())
+    main_entry.bind("<KeyRelease>", lambda e: schedule_generate())
     main_focus_var = tk.BooleanVar(value=True)
     main_focus_chk = ttk.Checkbutton(
         main_frame, text="주인공 강조 (가중치+solo focus)",
@@ -660,8 +734,23 @@ def run_gui() -> int:
         subject = subject_var.get().strip() or None
         main_subject = main_subject_var.get().strip() or None
         if translate_var.get():
-            subject = translate_korean(subject)
-            main_subject = translate_korean(main_subject)
+            subject, eng_s = translate_text(subject, online=True,
+                                            cache=state["tcache"])
+            main_subject, eng_m = translate_text(main_subject, online=True,
+                                                 cache=state["tcache"])
+            engines = {e for e in (eng_s, eng_m) if e != "none"}
+            leftover = any(v and _has_hangul(v)
+                           for v in (subject, main_subject))
+            if not engines:
+                status_var.set("")
+            elif "online" in engines:
+                status_var.set("🌐 온라인 번역 적용됨")
+            elif leftover:
+                status_var.set("⚠️ 오프라인 사전 사용 — 일부 단어 미번역")
+            else:
+                status_var.set("📖 오프라인 사전 번역 적용됨")
+        else:
+            status_var.set("")
         poses = [tag for tag, v in pose_vars.items() if v.get()]
         result = generate(
             style_key(), subject=subject, randomize=randomize_var.get(),
@@ -673,6 +762,12 @@ def run_gui() -> int:
         )
         set_text(pos_text, result["positive"])
         set_text(neg_text, result["negative"])
+
+    def schedule_generate(delay: int = 600) -> None:
+        # 타이핑 중 매 키마다 온라인 번역을 호출하지 않도록 디바운스.
+        if state["after"] is not None:
+            root.after_cancel(state["after"])
+        state["after"] = root.after(delay, do_generate)
 
     def copy_to_clipboard(widget) -> None:
         root.clipboard_clear()
