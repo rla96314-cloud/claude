@@ -240,6 +240,20 @@ class PromptStudio(ctk.CTk):
         self.emo_menu, self.emo_map = s.add_menu("감정", EXPRS)
         self.mood_menu, self.mood_map = s.add_menu("분위기", MOODS)
 
+        # 자세 / 포즈 (다중 선택)
+        s = Section(scroll, "자세 / 포즈")
+        s.pack(fill="x")
+        pose_box = ctk.CTkFrame(s.body, fg_color="transparent")
+        pose_box.grid(row=0, column=0, columnspan=2, sticky="w")
+        self.pose_vars: dict[str, ctk.BooleanVar] = {}
+        for idx, (label, _, tag) in enumerate(engine.POSES):
+            var = ctk.BooleanVar()
+            self.pose_vars[tag] = var
+            ctk.CTkCheckBox(pose_box, text=label, variable=var,
+                            command=self.generate, checkbox_width=18,
+                            checkbox_height=18).grid(
+                row=idx // 2, column=idx % 2, sticky="w", padx=4, pady=3)
+
         # 의상 / 소품
         s = Section(scroll, "의상 / 소품")
         s.pack(fill="x")
@@ -380,12 +394,13 @@ class PromptStudio(ctk.CTk):
             extra.append("monochrome, black and white, grayscale")
 
         count = self.count_map[self.count_menu.get()]
+        poses = [tag for tag, v in self.pose_vars.items() if v.get()]
         result = engine.generate(
             style, character=character or None, background=background or None,
             situation=situation or None, randomize=self.random_var.get(),
             seed=self._seed, shot=self.shot_map[self.shot_menu.get()],
             angle=self.angle_map[self.angle_menu.get()],
-            expression=self.emo_map[self.emo_menu.get()],
+            expression=self.emo_map[self.emo_menu.get()], poses=poses,
             count=count, main_subject=main_subject,
             main_focus=self.mainfocus_var.get(), emphasis=self.emph_var.get(),
             extra_tags=extra,
@@ -428,6 +443,8 @@ class PromptStudio(ctk.CTk):
             menu.set(menu.cget("values")[0])
         self.gray_var.set(False)
         self.bw_var.set(False)
+        for v in self.pose_vars.values():
+            v.set(False)
         self.count_menu.set(COUNTS[0][0])
         self.generate(new_seed=True)
 
