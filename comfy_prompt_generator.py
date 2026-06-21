@@ -658,129 +658,152 @@ def run_gui() -> int:
 
     root = tk.Tk()
     root.title("ComfyUI 프롬프트 생성기")
-    root.geometry("860x820")
-    root.minsize(760, 700)
+    root.geometry("1040x720")
+    root.minsize(900, 600)
 
-    main = ttk.Frame(root, padding=12)
-    main.pack(fill="both", expand=True)
+    # 좌(옵션) | 우(결과) 2단 분할
+    paned = ttk.PanedWindow(root, orient="horizontal")
+    paned.pack(fill="both", expand=True)
 
-    # --- 상단: 스타일 / 무작위 / 한글번역 / 주제 ---
-    top = ttk.Frame(main)
-    top.pack(fill="x", pady=(0, 6))
-    ttk.Label(top, text="스타일:").grid(row=0, column=0, sticky="w", padx=(0, 4))
+    # ---- 왼쪽: 스크롤 가능한 옵션 패널 ----
+    left_wrap = ttk.Frame(paned)
+    paned.add(left_wrap, weight=0)
+    canvas = tk.Canvas(left_wrap, width=380, highlightthickness=0)
+    vsb = ttk.Scrollbar(left_wrap, orient="vertical", command=canvas.yview)
+    canvas.configure(yscrollcommand=vsb.set)
+    vsb.pack(side="right", fill="y")
+    canvas.pack(side="left", fill="both", expand=True)
+    left = ttk.Frame(canvas, padding=10)
+    canvas.create_window((0, 0), window=left, anchor="nw")
+    left.bind("<Configure>",
+              lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+    canvas.bind_all(
+        "<MouseWheel>",
+        lambda e: canvas.yview_scroll(int(-e.delta / 120), "units"))
+
+    # ---- 오른쪽: 결과 프리뷰 ----
+    right = ttk.Frame(paned, padding=10)
+    paned.add(right, weight=1)
+
+    # === 왼쪽 컨트롤 ===
+    ttk.Label(left, text="스타일:").pack(anchor="w")
     style_combo = ttk.Combobox(
-        top, state="readonly", width=20,
-        values=[f"{k} ({v['label']})" for k, v in STYLES.items()],
-    )
+        left, state="readonly", width=28,
+        values=[f"{k} ({v['label']})" for k, v in STYLES.items()])
     style_combo.current(0)
-    style_combo.grid(row=0, column=1, sticky="w", padx=(0, 12))
-    randomize_var = tk.BooleanVar(value=True)
-    ttk.Checkbutton(top, text="무작위 플레이버",
-                    variable=randomize_var,
-                    command=lambda: do_generate()).grid(row=0, column=2, sticky="w")
-    translate_var = tk.BooleanVar(value=True)
-    ttk.Checkbutton(top, text="한글 자동 번역",
-                    variable=translate_var,
-                    command=lambda: do_generate()).grid(row=0, column=3,
-                                                        sticky="w", padx=(8, 0))
-    emphasis_var = tk.BooleanVar(value=True)
-    ttk.Checkbutton(top, text="시점·샷 강조(가중치)",
-                    variable=emphasis_var,
-                    command=lambda: do_generate()).grid(row=0, column=4,
-                                                        sticky="w", padx=(8, 0))
+    style_combo.pack(anchor="w", fill="x", pady=(0, 6))
 
-    # 인물 / 배경 / 상황 — 각각 따로 입력
-    def add_field(row, label):
-        ttk.Label(top, text=label).grid(row=row, column=0, sticky="w",
-                                        padx=(0, 4), pady=(6, 0))
+    toggles = ttk.Frame(left)
+    toggles.pack(anchor="w", fill="x", pady=(0, 6))
+    randomize_var = tk.BooleanVar(value=True)
+    translate_var = tk.BooleanVar(value=True)
+    emphasis_var = tk.BooleanVar(value=True)
+    ttk.Checkbutton(toggles, text="무작위", variable=randomize_var,
+                    command=lambda: do_generate()).pack(side="left")
+    ttk.Checkbutton(toggles, text="한글번역", variable=translate_var,
+                    command=lambda: do_generate()).pack(side="left", padx=6)
+    ttk.Checkbutton(toggles, text="시점·샷 강조", variable=emphasis_var,
+                    command=lambda: do_generate()).pack(side="left")
+
+    def add_field(label):
+        ttk.Label(left, text=label).pack(anchor="w")
         var = tk.StringVar()
-        ent = ttk.Entry(top, textvariable=var)
-        ent.grid(row=row, column=1, columnspan=3, sticky="we", pady=(6, 0))
+        ent = ttk.Entry(left, textvariable=var)
+        ent.pack(anchor="w", fill="x", pady=(0, 4))
         ent.bind("<KeyRelease>", lambda e: schedule_generate())
         return var
 
-    character_var = add_field(1, "인물:")
-    background_var = add_field(2, "배경:")
-    situation_var = add_field(3, "상황:")
-    top.columnconfigure(1, weight=1)
-    status_var = tk.StringVar(value="")
-    ttk.Label(top, textvariable=status_var, foreground="#0a7").grid(
-        row=4, column=1, columnspan=3, sticky="w")
+    character_var = add_field("인물:")
+    background_var = add_field("배경:")
+    situation_var = add_field("상황:")
 
-    # --- 옵션: 샷 / 앵글 / 표정 / 인원수 / 포즈 ---
-    opt = ttk.LabelFrame(main, text="샷 · 앵글 · 표정 · 포즈 · 인원수 (선택하면 바로 적용)",
-                         padding=8)
-    opt.pack(fill="x", pady=6)
+    ttk.Separator(left, orient="horizontal").pack(fill="x", pady=6)
 
-    def add_combo(row, col, label, rows):
-        ttk.Label(opt, text=label).grid(row=row, column=col, sticky="w",
-                                        pady=2, padx=(0 if col == 0 else 12, 4))
-        cb = ttk.Combobox(opt, state="readonly", width=22,
+    def add_combo(label, rows):
+        row = ttk.Frame(left)
+        row.pack(anchor="w", fill="x", pady=1)
+        ttk.Label(row, text=label, width=7).pack(side="left")
+        cb = ttk.Combobox(row, state="readonly", width=24,
                           values=[r[0] for r in rows])
         cb.current(0)
-        cb.grid(row=row, column=col + 1, sticky="w")
+        cb.pack(side="left", fill="x", expand=True)
         cb.bind("<<ComboboxSelected>>", lambda e: do_generate())
         return cb
 
-    shot_combo = add_combo(0, 0, "샷 크기:", SHOT_SIZES)
-    angle_combo = add_combo(0, 2, "앵글:", CAMERA_ANGLES)
-    expr_combo = add_combo(1, 0, "표정:", EXPRESSIONS)
+    shot_combo = add_combo("샷:", SHOT_SIZES)
+    angle_combo = add_combo("앵글:", CAMERA_ANGLES)
+    expr_combo = add_combo("표정:", EXPRESSIONS)
 
-    # 인원수 (라디오)
-    ttk.Label(opt, text="인원수:").grid(row=1, column=2, sticky="w", padx=(12, 4))
+    # 인원수 (라디오) — 줄바꿈 그리드로 (좁은 패널에서 잘리지 않게)
+    ttk.Label(left, text="인원수:").pack(anchor="w", pady=(4, 0))
+    count_box = ttk.Frame(left)
+    count_box.pack(anchor="w", fill="x")
     count_var = tk.StringVar(value="solo")
-    count_box = ttk.Frame(opt)
-    count_box.grid(row=1, column=3, sticky="w")
-    for label, key, _ in COUNTS:
+    for idx, (label, key, _) in enumerate(COUNTS):
         ttk.Radiobutton(count_box, text=label, value=key, variable=count_var,
-                        command=lambda: do_generate()).pack(side="left", padx=2)
+                        command=lambda: do_generate()).grid(
+            row=idx // 3, column=idx % 3, sticky="w", padx=2)
 
     # 포즈 (체크, 다중)
-    ttk.Label(opt, text="포즈:").grid(row=2, column=0, sticky="nw", pady=(6, 2))
-    pose_box = ttk.Frame(opt)
-    pose_box.grid(row=2, column=1, columnspan=3, sticky="w", pady=(6, 0))
+    ttk.Label(left, text="포즈:").pack(anchor="w", pady=(6, 0))
+    pose_box = ttk.Frame(left)
+    pose_box.pack(anchor="w", fill="x")
     pose_vars: dict[str, tk.BooleanVar] = {}
     for idx, (label, _, tag) in enumerate(POSES):
         var = tk.BooleanVar(value=False)
         pose_vars[tag] = var
         ttk.Checkbutton(pose_box, text=label, variable=var,
                         command=lambda: do_generate()).grid(
-            row=idx // 5, column=idx % 5, sticky="w", padx=2)
+            row=idx // 3, column=idx % 3, sticky="w", padx=2)
 
-    # --- 주인공 지정 (다수일 때) ---
-    main_frame = ttk.LabelFrame(main, text="👑 주인공 지정 (인원수 2명 이상일 때)",
-                                padding=8)
-    main_frame.pack(fill="x", pady=6)
-    ttk.Label(main_frame, text="주인공 묘사:").grid(row=0, column=0, sticky="w")
+    ttk.Separator(left, orient="horizontal").pack(fill="x", pady=6)
+
+    # 주인공 지정
+    main_frame = ttk.LabelFrame(left, text="👑 주인공 (2명 이상일 때)", padding=6)
+    main_frame.pack(anchor="w", fill="x")
     main_subject_var = tk.StringVar()
-    main_entry = ttk.Entry(main_frame, textvariable=main_subject_var, width=38)
-    main_entry.grid(row=0, column=1, sticky="we", padx=4)
+    main_entry = ttk.Entry(main_frame, textvariable=main_subject_var)
+    main_entry.pack(anchor="w", fill="x")
     main_entry.bind("<KeyRelease>", lambda e: schedule_generate())
     main_focus_var = tk.BooleanVar(value=True)
     main_focus_chk = ttk.Checkbutton(
         main_frame, text="주인공 강조 (가중치+solo focus)",
         variable=main_focus_var, command=lambda: do_generate())
-    main_focus_chk.grid(row=0, column=2, padx=6)
-    # 도움말 버튼은 항상 활성 (solo 에서도 가이드를 볼 수 있게)
+    main_focus_chk.pack(anchor="w", pady=(4, 0))
     ttk.Button(main_frame, text="❔ 주인공 지정 방법",
                command=lambda: messagebox.showinfo("주인공 지정 방법",
-                                                   MAIN_GUIDE)).grid(
-        row=1, column=1, sticky="w", pady=(6, 0))
-    main_frame.columnconfigure(1, weight=1)
+                                                   MAIN_GUIDE)).pack(
+        anchor="w", pady=(4, 0))
 
-    # --- 출력 ---
-    out = ttk.Frame(main)
-    out.pack(fill="both", expand=True, pady=(4, 0))
-    ttk.Label(out, text="Positive (긍정문)",
-              font=("", 10, "bold")).pack(anchor="w")
-    pos_text = scrolledtext.ScrolledText(out, height=6, wrap="word")
-    pos_text.pack(fill="both", expand=True, pady=(2, 6))
-    ttk.Label(out, text="Negative (부정문)",
-              font=("", 10, "bold")).pack(anchor="w")
-    neg_text = scrolledtext.ScrolledText(out, height=6, wrap="word")
-    neg_text.pack(fill="both", expand=True, pady=(2, 0))
+    # === 오른쪽 결과 ===
+    ttk.Label(right, text="Positive (긍정문)",
+              font=("", 11, "bold")).pack(anchor="w")
+    pos_text = scrolledtext.ScrolledText(right, height=8, wrap="word")
+    pos_text.pack(fill="both", expand=True, pady=(2, 4))
+    pos_btns = ttk.Frame(right)
+    pos_btns.pack(anchor="e", pady=(0, 6))
+    ttk.Button(pos_btns, text="Positive 복사",
+               command=lambda: copy_to_clipboard(pos_text)).pack(side="right")
 
-    # --- 동작 ---
+    ttk.Label(right, text="Negative (부정문)",
+              font=("", 11, "bold")).pack(anchor="w")
+    neg_text = scrolledtext.ScrolledText(right, height=8, wrap="word")
+    neg_text.pack(fill="both", expand=True, pady=(2, 4))
+    neg_btns = ttk.Frame(right)
+    neg_btns.pack(anchor="e", pady=(0, 6))
+    ttk.Button(neg_btns, text="Negative 복사",
+               command=lambda: copy_to_clipboard(neg_text)).pack(side="right")
+
+    status_var = tk.StringVar(value="")
+    ttk.Label(right, textvariable=status_var, foreground="#0a7").pack(anchor="w")
+
+    bottom = ttk.Frame(right)
+    bottom.pack(fill="x", pady=(6, 0))
+    ttk.Button(bottom, text="🎲 새로 생성(랜덤)",
+               command=lambda: do_generate(new_seed=True)).pack(side="left")
+    ttk.Button(bottom, text="닫기", command=root.destroy).pack(side="right")
+
+    # === 동작 ===
     def style_key() -> str:
         idx = style_combo.current()
         return list(STYLES.keys())[idx if idx >= 0 else 0]
@@ -846,20 +869,9 @@ def run_gui() -> int:
     def copy_to_clipboard(widget) -> None:
         root.clipboard_clear()
         root.clipboard_append(widget.get("1.0", "end").strip())
-        messagebox.showinfo("복사됨", "클립보드에 복사했습니다.")
+        status_var.set("✅ 클립보드에 복사했습니다.")
 
     style_combo.bind("<<ComboboxSelected>>", lambda e: do_generate())
-
-    # --- 버튼 ---
-    btns = ttk.Frame(main)
-    btns.pack(fill="x", pady=(8, 0))
-    ttk.Button(btns, text="🎲 새로 생성(랜덤)",
-               command=lambda: do_generate(new_seed=True)).pack(side="left")
-    ttk.Button(btns, text="Positive 복사",
-               command=lambda: copy_to_clipboard(pos_text)).pack(side="left", padx=6)
-    ttk.Button(btns, text="Negative 복사",
-               command=lambda: copy_to_clipboard(neg_text)).pack(side="left")
-    ttk.Button(btns, text="닫기", command=root.destroy).pack(side="right")
 
     do_generate(new_seed=True)
     root.mainloop()
