@@ -137,7 +137,6 @@ class PromptStudio(ctk.CTk):
         self.geometry("1280x820")
         self.minsize(1080, 680)
         self.configure(fg_color="#16161e")
-        self._after = None
         self._tcache: dict = {}
         self._seed = None
 
@@ -146,7 +145,8 @@ class PromptStudio(ctk.CTk):
         body.pack(fill="both", expand=True, padx=10, pady=(0, 10))
         self._build_left(body)
         self._build_right(body)
-        self.generate(new_seed=True)
+        # 시작 시 자동 생성하지 않는다 — 설정 후 Generate 를 눌러야 나온다.
+        self.status.configure(text="설정을 마친 뒤 ✦ Generate 를 누르세요")
 
     # ---------------- Header ----------------
     def _build_header(self):
@@ -193,7 +193,7 @@ class PromptStudio(ctk.CTk):
         self.style_labels = [f"{v['label']}" for v in engine.STYLES.values()]
         self.style_keys = list(engine.STYLES.keys())
         self.style_menu = ctk.CTkOptionMenu(
-            s.body, values=self.style_labels, command=lambda v: self.generate(),
+            s.body, values=self.style_labels,
             fg_color="#2a2a35", button_color="#3a3a48")
         self.style_menu.grid(row=0, column=1, sticky="ew", pady=3)
         chk = ctk.CTkFrame(s.body, fg_color="transparent")
@@ -203,7 +203,7 @@ class PromptStudio(ctk.CTk):
         self.emph_var = ctk.BooleanVar(value=True)
         for t, v in (("무채색", self.gray_var), ("흑백", self.bw_var),
                      ("시점/샷 강조", self.emph_var)):
-            ctk.CTkCheckBox(chk, text=t, variable=v, command=self.generate,
+            ctk.CTkCheckBox(chk, text=t, variable=v,
                             checkbox_width=18, checkbox_height=18).pack(
                 side="left", padx=(0, 10))
 
@@ -250,8 +250,7 @@ class PromptStudio(ctk.CTk):
             var = ctk.BooleanVar()
             self.pose_vars[tag] = var
             ctk.CTkCheckBox(pose_box, text=label, variable=var,
-                            command=self.generate, checkbox_width=18,
-                            checkbox_height=18).grid(
+                            checkbox_width=18, checkbox_height=18).grid(
                 row=idx // 2, column=idx % 2, sticky="w", padx=4, pady=3)
 
         # 의상 / 소품
@@ -266,7 +265,7 @@ class PromptStudio(ctk.CTk):
         ctk.CTkLabel(s.body, text="인원수", width=58, anchor="w").grid(
             row=0, column=0, sticky="w", pady=3)
         self.count_menu = ctk.CTkOptionMenu(
-            s.body, values=[c[0] for c in COUNTS], command=lambda v: self.generate(),
+            s.body, values=[c[0] for c in COUNTS],
             fg_color="#2a2a35", button_color="#3a3a48")
         self.count_menu.grid(row=0, column=1, sticky="ew", pady=3)
         self.count_map = {c[0]: c[1] for c in COUNTS}
@@ -278,20 +277,10 @@ class PromptStudio(ctk.CTk):
         self.translate_var = ctk.BooleanVar(value=True)
         for t, v in (("주인공 강조", self.mainfocus_var),
                      ("무작위", self.random_var), ("한글번역", self.translate_var)):
-            ctk.CTkCheckBox(opts, text=t, variable=v, command=self.generate,
+            ctk.CTkCheckBox(opts, text=t, variable=v,
                             checkbox_width=18, checkbox_height=18).pack(
                 side="left", padx=(0, 10))
-
-        # 텍스트 입력은 디바운스 후 생성
-        for var in (self.person_var, self.gender_var, self.age_var,
-                    self.trait_var, self.place_var, self.bgdesc_var,
-                    self.cloth_var, self.prop_var, self.main_var):
-            var.trace_add("write", lambda *a: self.schedule())
-        # 메뉴 변경 즉시 생성
-        for menu in (self.shot_menu, self.angle_menu, self.frame_menu,
-                     self.light_menu, self.time_menu, self.emo_menu,
-                     self.mood_menu):
-            menu.configure(command=lambda v: self.generate())
+        # 옵션 변경은 자동 생성하지 않는다 — Generate 버튼을 눌러야 반영됨.
 
     # ---------------- Right (output) ----------------
     def _build_right(self, parent):
@@ -367,11 +356,6 @@ class PromptStudio(ctk.CTk):
             if v:
                 parts.append(self._tr(v))
         return ", ".join(parts)
-
-    def schedule(self, delay=600):
-        if self._after is not None:
-            self.after_cancel(self._after)
-        self._after = self.after(delay, self.generate)
 
     def generate(self, new_seed=False):
         import random
