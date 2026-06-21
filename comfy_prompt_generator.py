@@ -154,7 +154,7 @@ CAMERA_ANGLES = [
     ("버드아이뷰", "birdseye", "bird's-eye view"),
     ("더치앵글(기울임)", "dutch", "dutch angle"),
     ("POV(1인칭)", "pov", "pov"),
-    ("뒤에서", "behind", "from behind"),
+    ("뒤에서(뒷모습)", "behind", "from behind, back view"),
 ]
 
 EXPRESSIONS = [
