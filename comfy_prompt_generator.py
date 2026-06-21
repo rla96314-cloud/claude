@@ -10,16 +10,18 @@ ComfyUI / Stable Diffusion 용 긍정문(positive) · 부정문(negative) 프롬
 - CLI 모드:  python comfy_prompt_generator.py --cli ...
 
 지원 스타일: realistic(실사) / anime(애니) / fantasy(판타지/컨셉아트)
+옵션      : 샷 크기(shot) / 포즈(pose) / 인원수(count) / 주인공 지정(main)
 
 CLI 예시
 --------
-  # 실사 인물 프롬프트 1개 생성
-  python comfy_prompt_generator.py --cli --style realistic --subject "1girl, long hair"
+  # 실사 인물, 전신, 서 있는 포즈
+  python comfy_prompt_generator.py --cli --style realistic --shot full-body --pose standing
 
-  # 애니 스타일 랜덤 5개
-  python comfy_prompt_generator.py --cli --style anime --random -n 5
+  # 애니, 2명에서 빨강머리 기사를 주인공으로 강조
+  python comfy_prompt_generator.py --cli --style anime --count 2 \
+      --main "red-haired knight" --main-focus
 
-  # 사용 가능한 태그/스타일 목록 보기
+  # 사용 가능한 태그/옵션 목록 보기
   python comfy_prompt_generator.py --cli --list
 """
 
@@ -33,9 +35,6 @@ import textwrap
 # ---------------------------------------------------------------------------
 # 1. 태그 라이브러리 (스타일별)
 # ---------------------------------------------------------------------------
-# 각 스타일은 positive 프롬프트를 구성하는 카테고리별 후보 태그를 가진다.
-# 'quality' 는 맨 앞에 붙는 품질 부스트 태그, 그 외는 랜덤/선택 대상.
-
 STYLES = {
     "realistic": {
         "label": "실사 / 포토리얼리즘",
@@ -125,7 +124,55 @@ STYLES = {
 }
 
 # ---------------------------------------------------------------------------
-# 2. 부정문(negative) 프리셋
+# 2. 공통 옵션 (모든 스타일에 직접 적용) — (한글 라벨, 영어 태그)
+# ---------------------------------------------------------------------------
+# 샷 크기: 단일 선택
+SHOT_SIZES = [
+    ("지정 안 함", ""),
+    ("클로즈업(얼굴)", "extreme close-up, face focus"),
+    ("포트레이트(얼굴~어깨)", "portrait"),
+    ("상반신", "upper body"),
+    ("카우보이샷(허벅지 위)", "cowboy shot"),
+    ("전신", "full body shot"),
+    ("와이드샷(멀리)", "wide shot"),
+]
+
+# 포즈: 다중 선택(체크)
+POSES = [
+    ("서 있음", "standing"),
+    ("앉아 있음", "sitting"),
+    ("걷기", "walking"),
+    ("달리기", "running"),
+    ("역동적 액션", "dynamic action pose"),
+    ("누워 있음", "lying down"),
+    ("뒤돌아봄", "from behind"),
+    ("기대어 있음", "leaning"),
+    ("점프", "jumping"),
+    ("정면 응시", "looking at viewer"),
+]
+
+# 인원수: 단일 선택. (라벨, key, 실제 태그)
+COUNTS = [
+    ("1명 (solo)", "solo", "solo"),
+    ("2명", "2", "2people, two characters"),
+    ("3명", "3", "3people, group of three"),
+    ("여러 명/군중", "crowd", "crowd, multiple people"),
+]
+COUNT_TAG = {key: tag for _, key, tag in COUNTS}
+
+# CLI용 샷 키 매핑 (full-body 등 입력 편의)
+SHOT_CLI = {
+    "close-up": "extreme close-up, face focus",
+    "portrait": "portrait",
+    "upper-body": "upper body",
+    "cowboy": "cowboy shot",
+    "full-body": "full body shot",
+    "wide": "wide shot",
+}
+POSE_CLI = {tag.split(",")[0].replace(" ", "-"): tag for _, tag in POSES}
+
+# ---------------------------------------------------------------------------
+# 3. 부정문(negative) 프리셋
 # ---------------------------------------------------------------------------
 NEGATIVE_COMMON = [
     "lowres", "bad anatomy", "bad hands", "extra digits", "fewer digits",
@@ -152,22 +199,36 @@ NEGATIVE_BY_STYLE = {
 
 
 # ---------------------------------------------------------------------------
-# 3. 프롬프트 빌드 로직
+# 4. 프롬프트 빌드 로직
 # ---------------------------------------------------------------------------
+def _dedupe(parts: list[str]) -> list[str]:
+    seen: set[str] = set()
+    return [p for p in parts if p and not (p in seen or seen.add(p))]
+
+
 def build_positive(style: str, subject: str | None = None,
-                   randomize: bool = True, seed: int | None = None) -> str:
+                   randomize: bool = True, seed: int | None = None,
+                   shot: str = "", poses: list[str] | None = None,
+                   count: str = "solo", main_subject: str | None = None,
+                   main_focus: bool = False) -> str:
     """긍정문(positive) 프롬프트를 만든다.
 
-    style     : STYLES 키 (realistic / anime / fantasy)
-    subject   : 사용자가 직접 지정한 주제. 없으면 라이브러리에서 선택.
-    randomize : True 면 각 카테고리에서 무작위로 뽑고, False 면 앞쪽 태그 사용.
-    seed      : 재현 가능한 랜덤을 위한 시드.
+    style        : STYLES 키 (realistic / anime / fantasy)
+    subject      : 사용자가 직접 지정한 주제. 없으면 라이브러리에서 선택.
+    randomize    : True 면 플레이버 태그(외형/장면/조명)를 무작위로 선택.
+    seed         : 재현 가능한 랜덤 시드.
+    shot         : 샷 크기 태그(영어). 빈 문자열이면 미지정.
+    poses        : 포즈 태그(영어) 리스트.
+    count        : 인원수 key (solo / 2 / 3 / crowd).
+    main_subject : 다수일 때 '주인공' 묘사. (예: "red-haired knight")
+    main_focus   : True 면 주인공에 가중치 + solo focus 로 강조.
     """
     if style not in STYLES:
         raise ValueError(f"알 수 없는 스타일: {style!r} (가능: {', '.join(STYLES)})")
 
     rng = random.Random(seed)
     data = STYLES[style]
+    poses = poses or []
 
     def pick(category: str, k: int = 1) -> list[str]:
         pool = data[category]
@@ -176,45 +237,91 @@ def build_positive(style: str, subject: str | None = None,
         return pool[:k]
 
     parts: list[str] = []
-    # 품질 태그 (2~3개)
+    # (1) 품질
     parts += pick("quality", 3 if randomize else 2)
-    # 주제
-    if subject:
+
+    multi = count not in ("solo", None, "")
+
+    # (2) 인원수
+    parts.append(COUNT_TAG.get(count, ""))
+
+    # (3) 주제 / 주인공
+    if multi and main_subject:
+        if main_focus:
+            # 주인공 강조: 가중치 + solo focus + 시선 유도
+            parts.append(f"({main_subject.strip()}:1.3)")
+            parts.append("solo focus")
+            parts.append("looking at viewer")
+        else:
+            parts.append(main_subject.strip())
+    elif subject:
         parts.append(subject.strip())
     else:
         parts += pick("subject", 1)
-    # 외형 / 장면 / 조명 / 카메라
+
+    # (4) 포즈 (직접 적용)
+    parts += poses
+
+    # (5) 샷 크기 (직접 적용)
+    if shot:
+        parts.append(shot)
+
+    # (6) 플레이버
     parts += pick("appearance", 2)
     parts += pick("scene", 1)
     parts += pick("lighting", 1)
-    parts += pick("camera", 1)
+    if not shot:  # 샷을 지정했으면 카메라 프레이밍 태그는 생략
+        parts += pick("camera", 1)
 
-    # 중복 제거 (순서 유지)
-    seen: set[str] = set()
-    unique = [p for p in parts if not (p in seen or seen.add(p))]
-    return ", ".join(unique)
+    return ", ".join(_dedupe(parts))
 
 
 def build_negative(style: str) -> str:
     """부정문(negative) 프롬프트를 만든다."""
     tags = list(NEGATIVE_COMMON) + NEGATIVE_BY_STYLE.get(style, [])
-    seen: set[str] = set()
-    unique = [t for t in tags if not (t in seen or seen.add(t))]
-    return ", ".join(unique)
+    return ", ".join(_dedupe(tags))
 
 
-def generate(style: str, subject: str | None = None,
-            randomize: bool = True, seed: int | None = None) -> dict:
+def generate(style: str, **kwargs) -> dict:
     """positive / negative 를 함께 반환."""
     return {
         "style": style,
-        "positive": build_positive(style, subject, randomize, seed),
+        "positive": build_positive(style, **kwargs),
         "negative": build_negative(style),
     }
 
 
+# 주인공 지정 방법 설명 (GUI 버튼 / CLI --help-main 공용)
+MAIN_GUIDE = """\
+[ 다수 인물에서 '주인공'을 정하는 방법 ]
+
+1) 순서 — 프롬프트 맨 앞에 둘수록 모델이 더 강하게 반영합니다.
+   예) 2girls, (red-haired knight ...), background girl ...
+
+2) 가중치 — 괄호와 숫자로 강조.  (대상:1.3) 처럼 1.1~1.4 권장.
+   예) (red-haired knight:1.3)
+   ※ 이 프로그램의 '주인공 강조' 체크가 자동으로 넣어줍니다.
+
+3) solo focus 태그 — 여러 명이어도 한 명에 초점을 맞춥니다(부루/애니 모델).
+   + 'looking at viewer' 로 주인공의 시선을 카메라로 유도.
+
+4) BREAK 키워드 — 인물 묘사를 분리해 섞임(색 번짐)을 줄입니다.
+   예) 2girls, BREAK, (red knight, red hair), BREAK, (blue mage, blue hair)
+
+5) 가장 정확한 방법 = 리저널 프롬프트(영역 분리).
+   ComfyUI 커스텀 노드를 쓰면 화면을 좌/우 등으로 나눠 인물별 프롬프트를
+   따로 적용합니다. 색·의상 섞임이 거의 없어집니다.
+   - 추천 노드: 'Attention Couple', 'Regional Prompter',
+     기본 노드 'Conditioning (Set Area)' / 'Conditioning (Combine)'
+   - 흐름: 인물별로 CLIP Text Encode → 각 영역(Set Area) 지정 → Combine
+     → 하나의 conditioning 으로 KSampler 에 연결.
+
+요약: 간단히는 (1)(2)(3), 확실히는 (5) 리저널 프롬프트를 쓰세요.
+"""
+
+
 # ---------------------------------------------------------------------------
-# 4. CLI
+# 5. CLI
 # ---------------------------------------------------------------------------
 def run_cli(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(
@@ -225,18 +332,31 @@ def run_cli(argv: list[str]) -> int:
     parser.add_argument("--cli", action="store_true", help="CLI 모드로 실행")
     parser.add_argument("--style", choices=list(STYLES), default="realistic",
                         help="그림 스타일 (기본: realistic)")
-    parser.add_argument("--subject", default=None,
-                        help="직접 지정할 주제 (예: '1girl, long hair')")
-    parser.add_argument("--random", dest="randomize", action="store_true",
-                        default=True, help="카테고리별 무작위 선택 (기본 활성)")
+    parser.add_argument("--subject", default=None, help="직접 지정할 주제")
     parser.add_argument("--no-random", dest="randomize", action="store_false",
-                        help="무작위 대신 대표 태그 사용")
-    parser.add_argument("-n", "--count", type=int, default=1,
-                        help="생성할 프롬프트 개수 (기본 1)")
+                        default=True, help="무작위 대신 대표 태그 사용")
+    parser.add_argument("--shot", choices=list(SHOT_CLI), default=None,
+                        help="샷 크기: " + ", ".join(SHOT_CLI))
+    parser.add_argument("--pose", action="append", default=[],
+                        choices=list(POSE_CLI),
+                        help="포즈(여러 번 사용 가능): " + ", ".join(POSE_CLI))
+    parser.add_argument("--count", choices=[k for _, k, _ in COUNTS],
+                        default="solo", help="인원수 (기본 solo)")
+    parser.add_argument("--main", dest="main_subject", default=None,
+                        help="다수일 때 주인공 묘사")
+    parser.add_argument("--main-focus", dest="main_focus", action="store_true",
+                        help="주인공에 가중치+solo focus 로 강조")
+    parser.add_argument("-n", "--count-out", dest="count_out", type=int,
+                        default=1, help="생성할 프롬프트 개수")
     parser.add_argument("--seed", type=int, default=None, help="랜덤 시드")
-    parser.add_argument("--list", action="store_true",
-                        help="스타일/태그 목록 출력 후 종료")
+    parser.add_argument("--list", action="store_true", help="옵션/태그 목록")
+    parser.add_argument("--help-main", action="store_true",
+                        help="주인공 지정 방법 설명 출력")
     args = parser.parse_args(argv)
+
+    if args.help_main:
+        print(MAIN_GUIDE)
+        return 0
 
     if args.list:
         for key, data in STYLES.items():
@@ -245,126 +365,209 @@ def run_cli(argv: list[str]) -> int:
                 if cat == "label":
                     continue
                 print(f"   - {cat:11s}: {', '.join(tags)}")
+        print("\n■ 샷 크기 (--shot):  " + ", ".join(SHOT_CLI))
+        print("■ 포즈   (--pose) :  " + ", ".join(POSE_CLI))
+        print("■ 인원수 (--count):  " + ", ".join(k for _, k, _ in COUNTS))
         return 0
 
-    for i in range(max(1, args.count)):
+    shot_tag = SHOT_CLI.get(args.shot, "") if args.shot else ""
+    pose_tags = [POSE_CLI[p] for p in args.pose]
+
+    for i in range(max(1, args.count_out)):
         seed = args.seed if args.seed is None else args.seed + i
-        result = generate(args.style, args.subject, args.randomize, seed)
+        result = generate(
+            args.style, subject=args.subject, randomize=args.randomize,
+            seed=seed, shot=shot_tag, poses=pose_tags, count=args.count,
+            main_subject=args.main_subject, main_focus=args.main_focus,
+        )
         header = f" 프롬프트 #{i + 1} [{args.style}] "
         print("\n" + header.center(60, "="))
         print("\n[ Positive ]")
-        print(textwrap.fill(result["positive"], width=72,
-                            subsequent_indent="  "))
+        print(textwrap.fill(result["positive"], width=72, subsequent_indent="  "))
         print("\n[ Negative ]")
-        print(textwrap.fill(result["negative"], width=72,
-                            subsequent_indent="  "))
+        print(textwrap.fill(result["negative"], width=72, subsequent_indent="  "))
     print()
     return 0
 
 
 # ---------------------------------------------------------------------------
-# 5. GUI (tkinter)
+# 6. GUI (tkinter)
 # ---------------------------------------------------------------------------
 def run_gui() -> int:
     try:
         import tkinter as tk
-        from tkinter import ttk, messagebox
-    except Exception as exc:  # pragma: no cover - 환경에 tkinter 없을 때
+        from tkinter import ttk, messagebox, scrolledtext
+    except Exception as exc:  # pragma: no cover
         print("tkinter 를 불러올 수 없습니다. CLI 모드를 사용하세요:")
         print("  python comfy_prompt_generator.py --cli --help")
         print(f"(원인: {exc})")
         return 1
 
+    state = {"seed": None}
+
     root = tk.Tk()
     root.title("ComfyUI 프롬프트 생성기")
-    root.geometry("760x620")
-    root.minsize(640, 540)
+    root.geometry("820x760")
+    root.minsize(720, 660)
 
     main = ttk.Frame(root, padding=12)
     main.pack(fill="both", expand=True)
 
-    # --- 상단 컨트롤 ---
-    ctrl = ttk.Frame(main)
-    ctrl.pack(fill="x", pady=(0, 8))
-
-    ttk.Label(ctrl, text="스타일:").grid(row=0, column=0, sticky="w", padx=(0, 4))
-    style_var = tk.StringVar(value="realistic")
-    style_labels = {k: f"{k} ({v['label']})" for k, v in STYLES.items()}
+    # --- 상단: 스타일 / 무작위 / 주제 ---
+    top = ttk.Frame(main)
+    top.pack(fill="x", pady=(0, 6))
+    ttk.Label(top, text="스타일:").grid(row=0, column=0, sticky="w", padx=(0, 4))
     style_combo = ttk.Combobox(
-        ctrl, state="readonly", width=24,
-        values=list(style_labels.values()),
+        top, state="readonly", width=22,
+        values=[f"{k} ({v['label']})" for k, v in STYLES.items()],
     )
     style_combo.current(0)
     style_combo.grid(row=0, column=1, sticky="w", padx=(0, 12))
-
     randomize_var = tk.BooleanVar(value=True)
-    ttk.Checkbutton(ctrl, text="무작위", variable=randomize_var).grid(
-        row=0, column=2, sticky="w", padx=(0, 12))
+    ttk.Checkbutton(top, text="무작위 플레이버",
+                    variable=randomize_var).grid(row=0, column=2, sticky="w")
 
-    ttk.Label(ctrl, text="주제(선택):").grid(row=1, column=0, sticky="w",
-                                          padx=(0, 4), pady=(8, 0))
+    ttk.Label(top, text="주제(선택):").grid(row=1, column=0, sticky="w",
+                                         padx=(0, 4), pady=(6, 0))
     subject_var = tk.StringVar()
-    subject_entry = ttk.Entry(ctrl, textvariable=subject_var, width=46)
-    subject_entry.grid(row=1, column=1, columnspan=2, sticky="we", pady=(8, 0))
-    ctrl.columnconfigure(1, weight=1)
+    ttk.Entry(top, textvariable=subject_var).grid(
+        row=1, column=1, columnspan=2, sticky="we", pady=(6, 0))
+    top.columnconfigure(1, weight=1)
 
-    def current_style_key() -> str:
+    # --- 옵션: 샷 / 인원수 / 포즈 ---
+    opt = ttk.LabelFrame(main, text="샷 · 포즈 · 인원수 (체크하면 바로 적용)",
+                         padding=8)
+    opt.pack(fill="x", pady=6)
+
+    # 샷 크기 (라디오)
+    ttk.Label(opt, text="샷 크기:").grid(row=0, column=0, sticky="nw", pady=2)
+    shot_var = tk.StringVar(value="")
+    shot_box = ttk.Frame(opt)
+    shot_box.grid(row=0, column=1, sticky="w")
+    for label, tag in SHOT_SIZES:
+        ttk.Radiobutton(shot_box, text=label, value=tag,
+                        variable=shot_var,
+                        command=lambda: do_generate()).pack(side="left", padx=2)
+
+    # 인원수 (라디오)
+    ttk.Label(opt, text="인원수:").grid(row=1, column=0, sticky="nw", pady=2)
+    count_var = tk.StringVar(value="solo")
+    count_box = ttk.Frame(opt)
+    count_box.grid(row=1, column=1, sticky="w")
+    for label, key, _ in COUNTS:
+        ttk.Radiobutton(count_box, text=label, value=key, variable=count_var,
+                        command=lambda: on_count_change()).pack(side="left", padx=2)
+
+    # 포즈 (체크, 다중)
+    ttk.Label(opt, text="포즈:").grid(row=2, column=0, sticky="nw", pady=2)
+    pose_box = ttk.Frame(opt)
+    pose_box.grid(row=2, column=1, sticky="w")
+    pose_vars: dict[str, tk.BooleanVar] = {}
+    for idx, (label, tag) in enumerate(POSES):
+        var = tk.BooleanVar(value=False)
+        pose_vars[tag] = var
+        ttk.Checkbutton(pose_box, text=label, variable=var,
+                        command=lambda: do_generate()).grid(
+            row=idx // 5, column=idx % 5, sticky="w", padx=2)
+
+    # --- 주인공 지정 (다수일 때) ---
+    main_frame = ttk.LabelFrame(main, text="👑 주인공 지정 (인원수 2명 이상일 때)",
+                                padding=8)
+    main_frame.pack(fill="x", pady=6)
+    ttk.Label(main_frame, text="주인공 묘사:").grid(row=0, column=0, sticky="w")
+    main_subject_var = tk.StringVar()
+    main_entry = ttk.Entry(main_frame, textvariable=main_subject_var, width=40)
+    main_entry.grid(row=0, column=1, sticky="we", padx=4)
+    main_focus_var = tk.BooleanVar(value=True)
+    ttk.Checkbutton(main_frame, text="주인공 강조 (가중치+solo focus)",
+                    variable=main_focus_var,
+                    command=lambda: do_generate()).grid(row=0, column=2, padx=6)
+    ttk.Button(main_frame, text="❔ 주인공 지정 방법",
+               command=lambda: messagebox.showinfo("주인공 지정 방법",
+                                                   MAIN_GUIDE)).grid(
+        row=1, column=1, sticky="w", pady=(6, 0))
+    main_frame.columnconfigure(1, weight=1)
+    main_entry.bind("<KeyRelease>", lambda e: do_generate())
+
+    # --- 출력 ---
+    out = ttk.Frame(main)
+    out.pack(fill="both", expand=True, pady=(4, 0))
+    ttk.Label(out, text="Positive (긍정문)",
+              font=("", 10, "bold")).pack(anchor="w")
+    pos_text = scrolledtext.ScrolledText(out, height=6, wrap="word")
+    pos_text.pack(fill="both", expand=True, pady=(2, 6))
+    ttk.Label(out, text="Negative (부정문)",
+              font=("", 10, "bold")).pack(anchor="w")
+    neg_text = scrolledtext.ScrolledText(out, height=6, wrap="word")
+    neg_text.pack(fill="both", expand=True, pady=(2, 0))
+
+    # --- 동작 ---
+    def style_key() -> str:
         idx = style_combo.current()
         return list(STYLES.keys())[idx if idx >= 0 else 0]
-
-    # --- 출력 영역 ---
-    out_frame = ttk.Frame(main)
-    out_frame.pack(fill="both", expand=True)
-
-    ttk.Label(out_frame, text="Positive (긍정문)",
-              font=("", 10, "bold")).pack(anchor="w")
-    pos_text = tk.Text(out_frame, height=8, wrap="word")
-    pos_text.pack(fill="both", expand=True, pady=(2, 8))
-
-    ttk.Label(out_frame, text="Negative (부정문)",
-              font=("", 10, "bold")).pack(anchor="w")
-    neg_text = tk.Text(out_frame, height=8, wrap="word")
-    neg_text.pack(fill="both", expand=True, pady=(2, 0))
 
     def set_text(widget, value: str) -> None:
         widget.delete("1.0", "end")
         widget.insert("1.0", value)
 
-    def do_generate() -> None:
-        style = current_style_key()
-        subject = subject_var.get().strip() or None
-        result = generate(style, subject, randomize_var.get())
+    def update_main_state() -> None:
+        multi = count_var.get() != "solo"
+        st = "normal" if multi else "disabled"
+        for child in main_frame.winfo_children():
+            try:
+                child.configure(state=st)
+            except tk.TclError:
+                pass
+
+    def do_generate(new_seed: bool = False) -> None:
+        if new_seed or state["seed"] is None:
+            state["seed"] = random.randrange(1_000_000_000)
+        update_main_state()
+        poses = [tag for tag, v in pose_vars.items() if v.get()]
+        result = generate(
+            style_key(), subject=subject_var.get().strip() or None,
+            randomize=randomize_var.get(), seed=state["seed"],
+            shot=shot_var.get(), poses=poses, count=count_var.get(),
+            main_subject=main_subject_var.get().strip() or None,
+            main_focus=main_focus_var.get(),
+        )
         set_text(pos_text, result["positive"])
         set_text(neg_text, result["negative"])
+
+    def on_count_change() -> None:
+        do_generate()
 
     def copy_to_clipboard(widget) -> None:
         root.clipboard_clear()
         root.clipboard_append(widget.get("1.0", "end").strip())
         messagebox.showinfo("복사됨", "클립보드에 복사했습니다.")
 
+    style_combo.bind("<<ComboboxSelected>>", lambda e: do_generate())
+    subject_var.trace_add("write", lambda *a: None)  # 입력은 생성 시 반영
+
     # --- 버튼 ---
     btns = ttk.Frame(main)
-    btns.pack(fill="x", pady=(10, 0))
-    ttk.Button(btns, text="🎲 생성", command=do_generate).pack(side="left")
+    btns.pack(fill="x", pady=(8, 0))
+    ttk.Button(btns, text="🎲 새로 생성(랜덤)",
+               command=lambda: do_generate(new_seed=True)).pack(side="left")
     ttk.Button(btns, text="Positive 복사",
                command=lambda: copy_to_clipboard(pos_text)).pack(side="left", padx=6)
     ttk.Button(btns, text="Negative 복사",
                command=lambda: copy_to_clipboard(neg_text)).pack(side="left")
     ttk.Button(btns, text="닫기", command=root.destroy).pack(side="right")
 
-    do_generate()  # 시작 시 한 번 채워두기
+    do_generate(new_seed=True)
     root.mainloop()
     return 0
 
 
 # ---------------------------------------------------------------------------
-# 6. 엔트리 포인트
+# 7. 엔트리 포인트
 # ---------------------------------------------------------------------------
 def main() -> int:
     argv = sys.argv[1:]
-    if "--cli" in argv or "--list" in argv:
-        return run_cli(argv)
-    if argv:  # 알 수 없는 인자가 들어오면 CLI 도움말 쪽으로
+    cli_flags = ("--cli", "--list", "--help-main")
+    if any(f in argv for f in cli_flags) or argv:
         return run_cli(argv)
     return run_gui()
 

@@ -38,10 +38,35 @@ python comfy_prompt_generator.py --cli --list
 |------|------|
 | `--style` | `realistic` / `anime` / `fantasy` (기본 realistic) |
 | `--subject` | 주제를 직접 지정 (없으면 라이브러리에서 선택) |
-| `--random` / `--no-random` | 카테고리별 무작위 선택 on/off (기본 on) |
-| `-n`, `--count` | 생성 개수 |
+| `--shot` | 샷 크기: `close-up` `portrait` `upper-body` `cowboy` `full-body` `wide` |
+| `--pose` | 포즈 (여러 번 사용 가능): `standing` `sitting` `dynamic-action-pose` … |
+| `--count` | 인원수: `solo` `2` `3` `crowd` (기본 solo) |
+| `--main` | 다수일 때 주인공 묘사 (예: `"red-haired knight"`) |
+| `--main-focus` | 주인공에 가중치 + `solo focus` 로 강조 |
+| `--no-random` | 무작위 대신 대표 태그 사용 |
+| `-n` | 생성 개수 |
 | `--seed` | 랜덤 시드 (재현용) |
-| `--list` | 사용 가능한 태그 출력 |
+| `--list` | 사용 가능한 옵션/태그 출력 |
+| `--help-main` | 주인공 지정 방법 설명 출력 |
+
+### 샷 / 포즈 / 인원수 — GUI에서 체크하면 바로 적용
+GUI 상단의 **샷 크기**(라디오), **포즈**(체크, 다중), **인원수**(라디오)를
+누르면 즉시 프롬프트에 반영됩니다. `🎲 새로 생성(랜덤)`을 누르기 전까지는
+같은 시드를 유지해 토글한 항목만 바뀌므로 비교하기 쉽습니다.
+
+### 다수 인물에서 '주인공' 정하기
+인원수를 2명 이상으로 설정하면 **👑 주인공 지정** 칸이 활성화됩니다.
+주인공 묘사를 입력하고 **주인공 강조**를 켜면 다음이 자동 적용됩니다.
+
+```
+2people, (red-haired knight:1.3), solo focus, looking at viewer, ...
+```
+
+주인공을 정하는 5가지 방법(순서·가중치·`solo focus`·`BREAK`·리저널 프롬프트)은
+GUI의 `❔ 주인공 지정 방법` 버튼 또는 `--help-main` 으로 볼 수 있습니다.
+가장 확실한 방법은 ComfyUI의 **리저널 프롬프트**(영역 분리) 노드
+(`Attention Couple`, `Regional Prompter`, 기본 `Conditioning (Set Area)` +
+`Conditioning (Combine)`)로 인물별 프롬프트를 화면 영역마다 따로 적용하는 것입니다.
 
 ## 커스터마이징
 `comfy_prompt_generator.py` 상단의 `STYLES`, `NEGATIVE_COMMON`,
