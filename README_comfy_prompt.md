@@ -7,6 +7,7 @@ ComfyUI / Stable Diffusion 용 **긍정문(positive)** · **부정문(negative)*
 - 추가 패키지 설치 불필요 (표준 라이브러리 + tkinter)
 - 스타일 프리셋 3종: `realistic`(실사) / `anime`(애니) / `fantasy`(판타지·컨셉아트)
 - 품질·주제·외형·장면·조명·카메라 카테고리를 조합해 자연스러운 프롬프트 구성
+- **인물 / 배경 / 상황**을 각각 따로 입력 (비우면 자동 생성)
 - **샷 / 앵글 / 표정 / 포즈 / 인원수** 옵션을 선택하면 즉시 반영
 - 스타일별 맞춤 negative 프롬프트 자동 첨부
 - 다수 인물에서 **주인공 지정**(가중치 + `solo focus`) 지원
@@ -40,7 +41,10 @@ python comfy_prompt_generator.py --cli --list
 | 옵션 | 설명 |
 |------|------|
 | `--style` | `realistic` / `anime` / `fantasy` (기본 realistic) |
-| `--subject` | 주제를 직접 지정 (없으면 라이브러리에서 선택) |
+| `--character` | 인물 묘사 (예: `"korean girl, long black hair"`) |
+| `--background` | 배경/장소 (예: `"rainy neon city"`) |
+| `--situation` | 상황/행동/분위기 (예: `"drinking coffee, relaxed"`) |
+| `--subject` | (구) 단일 주제 — `--character` 의 별칭(하위호환) |
 | `--shot` | 샷 크기: `closeup` `portrait` `upper-body` `medium` `cowboy` `full-body` `wide` `long` … |
 | `--angle` | 앵글: `front` `side` `low` `high` `birdseye` `dutch` `pov` `behind` |
 | `--expr` | 표정: `smile` `happy` `serious` `sad` `angry` `surprised` `shy` `wink` `crying` … |
@@ -56,6 +60,15 @@ python comfy_prompt_generator.py --cli --list
 | `--help-main` | 주인공 지정 방법 설명 출력 |
 
 > 정확한 슬러그 목록은 `--list` 로 언제든 확인할 수 있습니다.
+
+### 인물 · 배경 · 상황 — 따로 입력
+주제를 하나로 뭉뚱그리지 않고 **인물**(누가), **배경**(어디서), **상황**(무엇을/
+분위기)을 각각 적습니다. 비워두면 자동으로 채워집니다.
+- **인물**을 적으면 모델이 임의로 외형을 섞지 않습니다(충돌 방지).
+- **배경**을 적으면 랜덤 배경 대신 그 배경이 쓰입니다.
+- **상황**은 행동·분위기 태그로 들어갑니다.
+예) 인물 `korean girl, black hair` / 배경 `rainy neon city` /
+상황 `drinking coffee, relaxed`
 
 ### 샷 · 앵글 · 표정 · 포즈 · 인원수 — GUI에서 선택하면 바로 적용
 GUI 의 **샷 크기 / 앵글 / 표정**(드롭다운), **포즈**(체크, 다중),

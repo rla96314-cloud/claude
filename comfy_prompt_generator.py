@@ -385,8 +385,18 @@ def build_positive(style: str, subject: str | None = None,
                    shot: str = "", angle: str = "",
                    expression: str = "", poses: list[str] | None = None,
                    count: str = "solo", main_subject: str | None = None,
-                   main_focus: bool = False) -> str:
-    """긍정문(positive) 프롬프트 생성. (옵션은 build_* docstring 참고)"""
+                   main_focus: bool = False, character: str | None = None,
+                   background: str | None = None,
+                   situation: str | None = None) -> str:
+    """긍정문(positive) 프롬프트 생성.
+
+    인물/배경/상황을 따로 받는다.
+      character  : 인물 묘사 (예: "korean girl, long black hair").
+      background : 배경/장소 (예: "rainy neon city"). 주면 랜덤 배경 대신 사용.
+      situation  : 상황/행동/분위기 (예: "drinking coffee, relaxed").
+      subject    : 옛 단일 입력 — character 의 별칭(하위호환).
+    나머지 옵션은 shot/angle/expression/poses/count/main_* 참고.
+    """
     if style not in STYLES:
         raise ValueError(f"알 수 없는 스타일: {style!r} (가능: {', '.join(STYLES)})")
 
@@ -394,6 +404,13 @@ def build_positive(style: str, subject: str | None = None,
     data = STYLES[style]
     poses = poses or []
     multi = count not in ("solo", None, "")
+    character = (character or subject or "").strip()
+    background = (background or "").strip()
+    situation = (situation or "").strip()
+    has_main = bool(multi and main_subject)
+    # 인물이 직접 지정됐는지(주인공 또는 인물칸). True 면 랜덤 인물/외형을 안 넣어
+    # 사용자가 적은 인물과 충돌하지 않게 한다.
+    person_specified = bool(character) or has_main
 
     def pick(category: str, k: int = 1) -> list[str]:
         pool = data[category]
@@ -412,29 +429,33 @@ def build_positive(style: str, subject: str | None = None,
     parts += pick("quality", 3 if randomize else 2)
     # (2) 인원수
     parts.append(COUNT_TAG.get(count, ""))
-    # (3) 주제 / 주인공
-    if multi and main_subject:
+    # (3) 인물 / 주인공
+    if has_main:
         if main_focus:  # 가중치 + solo focus + 시선 유도
             parts += [f"({main_subject.strip()}:1.3)", "solo focus",
                       "looking at viewer"]
         else:
             parts.append(main_subject.strip())
-    elif subject:
-        parts.append(subject.strip())
-    else:
+    if character:
+        parts.append(character)
+    elif not person_specified:
         parts.append(pick_subject())
-    # (4) 포즈 / 표정
+    # (4) 포즈 / 표정 / 상황
     parts += poses
     if expression:
         parts.append(expression)
+    if situation:
+        parts.append(situation)
     # (5) 샷 / 앵글
     if shot:
         parts.append(shot)
     if angle:
         parts.append(angle)
-    # (6) 플레이버
-    parts += pick("appearance", 2)
-    parts += pick("scene", 1)
+    # (6) 플레이버 — 인물을 직접 적었으면 랜덤 외형은 생략
+    if not person_specified:
+        parts += pick("appearance", 2)
+    # 배경: 지정했으면 그대로, 아니면 랜덤
+    parts.append(background if background else pick("scene", 1)[0])
     parts += pick("lighting", 1)
     if not shot and not angle:  # 프레이밍을 안 정했으면 카메라 태그 보강
         parts += pick("camera", 1)
@@ -495,7 +516,14 @@ def run_cli(argv: list[str]) -> int:
     parser.add_argument("--cli", action="store_true", help="CLI 모드로 실행")
     parser.add_argument("--style", choices=list(STYLES), default="realistic",
                         help="그림 스타일 (기본: realistic)")
-    parser.add_argument("--subject", default=None, help="직접 지정할 주제")
+    parser.add_argument("--subject", default=None,
+                        help="(구) 단일 주제 — --character 의 별칭")
+    parser.add_argument("--character", default=None,
+                        help="인물 묘사 (예: 'korean girl, long black hair')")
+    parser.add_argument("--background", default=None,
+                        help="배경/장소 (예: 'rainy neon city')")
+    parser.add_argument("--situation", default=None,
+                        help="상황/행동/분위기 (예: 'drinking coffee, relaxed')")
     parser.add_argument("--no-random", dest="randomize", action="store_false",
                         default=True, help="무작위 대신 대표 태그 사용")
     parser.add_argument("--shot", choices=list(SHOT_CLI), default=None,
@@ -549,18 +577,26 @@ def run_cli(argv: list[str]) -> int:
         print("ℹ️  --main 이 지정되어 인원수를 자동으로 '2명'으로 설정합니다.")
         args.count = "2"
 
-    subject = args.subject
-    main_subject = args.main_subject
+    fields = {
+        "character": args.character or args.subject,
+        "background": args.background,
+        "situation": args.situation,
+        "main_subject": args.main_subject,
+    }
     if args.translate or args.offline_tr:
         use_online = not args.offline_tr
-        subject, eng_s = translate_text(subject, online=use_online)
-        main_subject, eng_m = translate_text(main_subject, online=use_online)
-        engines = {e for e in (eng_s, eng_m) if e != "none"}
+        labels = {"character": "인물", "background": "배경",
+                  "situation": "상황", "main_subject": "주인공"}
+        engines: set[str] = set()
+        for key, val in list(fields.items()):
+            fields[key], eng = translate_text(val, online=use_online)
+            if eng != "none":
+                engines.add(eng)
+            if fields[key] and _has_hangul(fields[key]):
+                print(f"⚠️  {labels[key]}에 번역 안 된 한글이 남아 있습니다: "
+                      f"{fields[key]}")
         if engines:
             print(f"🌐 번역 엔진: {', '.join(sorted(engines))}")
-        for label, val in (("주제", subject), ("주인공", main_subject)):
-            if val and _has_hangul(val):
-                print(f"⚠️  {label}에 번역 안 된 한글이 남아 있습니다: {val}")
 
     shot_tag = SHOT_CLI.get(args.shot, "") if args.shot else ""
     angle_tag = ANGLE_CLI.get(args.angle, "") if args.angle else ""
@@ -570,9 +606,11 @@ def run_cli(argv: list[str]) -> int:
     for i in range(max(1, args.num)):
         seed = args.seed if args.seed is None else args.seed + i
         result = generate(
-            args.style, subject=subject, randomize=args.randomize,
-            seed=seed, shot=shot_tag, angle=angle_tag, expression=expr_tag,
-            poses=pose_tags, count=args.count, main_subject=main_subject,
+            args.style, character=fields["character"],
+            background=fields["background"], situation=fields["situation"],
+            randomize=args.randomize, seed=seed, shot=shot_tag,
+            angle=angle_tag, expression=expr_tag, poses=pose_tags,
+            count=args.count, main_subject=fields["main_subject"],
             main_focus=args.main_focus,
         )
         header = f" 프롬프트 #{i + 1} [{args.style}] "
@@ -628,16 +666,23 @@ def run_gui() -> int:
                     command=lambda: do_generate()).grid(row=0, column=3,
                                                         sticky="w", padx=(8, 0))
 
-    ttk.Label(top, text="주제(선택):").grid(row=1, column=0, sticky="w",
-                                         padx=(0, 4), pady=(6, 0))
-    subject_var = tk.StringVar()
-    subject_entry = ttk.Entry(top, textvariable=subject_var)
-    subject_entry.grid(row=1, column=1, columnspan=3, sticky="we", pady=(6, 0))
-    subject_entry.bind("<KeyRelease>", lambda e: schedule_generate())
+    # 인물 / 배경 / 상황 — 각각 따로 입력
+    def add_field(row, label):
+        ttk.Label(top, text=label).grid(row=row, column=0, sticky="w",
+                                        padx=(0, 4), pady=(6, 0))
+        var = tk.StringVar()
+        ent = ttk.Entry(top, textvariable=var)
+        ent.grid(row=row, column=1, columnspan=3, sticky="we", pady=(6, 0))
+        ent.bind("<KeyRelease>", lambda e: schedule_generate())
+        return var
+
+    character_var = add_field(1, "인물:")
+    background_var = add_field(2, "배경:")
+    situation_var = add_field(3, "상황:")
     top.columnconfigure(1, weight=1)
     status_var = tk.StringVar(value="")
     ttk.Label(top, textvariable=status_var, foreground="#0a7").grid(
-        row=2, column=1, columnspan=3, sticky="w")
+        row=4, column=1, columnspan=3, sticky="w")
 
     # --- 옵션: 샷 / 앵글 / 표정 / 인원수 / 포즈 ---
     opt = ttk.LabelFrame(main, text="샷 · 앵글 · 표정 · 포즈 · 인원수 (선택하면 바로 적용)",
@@ -731,16 +776,20 @@ def run_gui() -> int:
         if new_seed or state["seed"] is None:
             state["seed"] = random.randrange(1_000_000_000)
         update_main_state()
-        subject = subject_var.get().strip() or None
-        main_subject = main_subject_var.get().strip() or None
+        vals = {
+            "character": character_var.get().strip() or None,
+            "background": background_var.get().strip() or None,
+            "situation": situation_var.get().strip() or None,
+            "main_subject": main_subject_var.get().strip() or None,
+        }
         if translate_var.get():
-            subject, eng_s = translate_text(subject, online=True,
-                                            cache=state["tcache"])
-            main_subject, eng_m = translate_text(main_subject, online=True,
-                                                 cache=state["tcache"])
-            engines = {e for e in (eng_s, eng_m) if e != "none"}
-            leftover = any(v and _has_hangul(v)
-                           for v in (subject, main_subject))
+            engines: set[str] = set()
+            for key, val in list(vals.items()):
+                vals[key], eng = translate_text(val, online=True,
+                                                cache=state["tcache"])
+                if eng != "none":
+                    engines.add(eng)
+            leftover = any(v and _has_hangul(v) for v in vals.values())
             if not engines:
                 status_var.set("")
             elif "online" in engines:
@@ -753,11 +802,13 @@ def run_gui() -> int:
             status_var.set("")
         poses = [tag for tag, v in pose_vars.items() if v.get()]
         result = generate(
-            style_key(), subject=subject, randomize=randomize_var.get(),
+            style_key(), character=vals["character"],
+            background=vals["background"], situation=vals["situation"],
+            randomize=randomize_var.get(),
             seed=state["seed"], shot=SHOT_SIZES[shot_combo.current()][2],
             angle=CAMERA_ANGLES[angle_combo.current()][2],
             expression=EXPRESSIONS[expr_combo.current()][2], poses=poses,
-            count=count_var.get(), main_subject=main_subject,
+            count=count_var.get(), main_subject=vals["main_subject"],
             main_focus=main_focus_var.get(),
         )
         set_text(pos_text, result["positive"])
