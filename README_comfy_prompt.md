@@ -1,7 +1,48 @@
 # ComfyUI 프롬프트 생성기
 
 ComfyUI / Stable Diffusion 용 **긍정문(positive)** · **부정문(negative)** 프롬프트를
-자동으로 만들어주는 작은 도구입니다. 추가 설치 없이 파이썬만 있으면 됩니다.
+자동으로 만들어주는 도구입니다.
+
+세 가지 형태로 쓸 수 있습니다:
+
+| 파일 | 형태 | 설치 |
+|------|------|------|
+| `prompt_studio.py` | **Prompt Studio** — 다크 테마 GUI (권장) | `pip install customtkinter` |
+| `comfy_prompt_generator.py` | 기본 tkinter GUI / CLI | 불필요(표준 라이브러리) |
+| `PromptStudio.exe` | 윈도우 단독 실행 파일 | 불필요 |
+
+생성·번역 엔진은 `comfy_prompt_generator.py` 한 곳에 있고, Prompt Studio 는
+그 엔진을 재사용하는 모던 UI 입니다.
+
+## Prompt Studio (다크 GUI)
+```bash
+pip install customtkinter
+python prompt_studio.py
+```
+- 다크 테마 + 접이식 설정 섹션(스타일 / 인물 / 배경 / 구도·카메라 / 조명 /
+  감정·분위기 / 의상·소품 / 기타)
+- 인물(인물·성별·연령·특징), 배경(장소·배경설명), 의상·소품을 세분화 입력
+- 샷·앵글·프레이밍·조명·시간·감정·분위기 드롭다운, 무채색/흑백/강조 토글
+- 우측 Prompt / Negative Prompt 패널(글자수 표시, 지우기·복사), 저장·불러오기
+- `한글번역` 기본 ON (온라인+사전 폴백)
+
+### 윈도우 .exe 빌드
+**A. GitHub Actions (권장, 윈도우 PC 불필요)**
+브랜치에 push 하면 `Build Prompt Studio (Windows .exe)` 워크플로가 윈도우
+러너에서 빌드합니다. 저장소 **Actions 탭 → 해당 실행 → Artifacts** 에서
+`PromptStudio-windows` 를 내려받으면 `PromptStudio.exe` 가 들어 있습니다.
+(수동 실행: Actions 탭에서 `Run workflow`)
+
+**B. 로컬 빌드 (윈도우)**
+```bat
+pip install -r requirements-studio.txt
+pyinstaller --onefile --windowed --name PromptStudio --collect-all customtkinter prompt_studio.py
+```
+→ `dist\PromptStudio.exe` 생성.
+
+## 기본 생성기 (comfy_prompt_generator.py)
+
+추가 설치 없이 파이썬만 있으면 되는 가벼운 버전입니다.
 
 ## 특징
 - 추가 패키지 설치 불필요 (표준 라이브러리 + tkinter)

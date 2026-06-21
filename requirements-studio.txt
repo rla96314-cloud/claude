@@ -1,0 +1,6 @@
+# Prompt Studio (GUI) 의존성
+# 생성/번역 엔진(comfy_prompt_generator)은 표준 라이브러리만 사용하며,
+# 다크 테마 GUI(prompt_studio)와 exe 빌드에만 아래 패키지가 필요합니다.
+customtkinter==5.2.2
+# exe 빌드용 (런타임에는 불필요)
+pyinstaller>=6.0

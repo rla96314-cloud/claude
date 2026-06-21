@@ -396,7 +396,8 @@ def build_positive(style: str, subject: str | None = None,
                    main_focus: bool = False, character: str | None = None,
                    background: str | None = None,
                    situation: str | None = None,
-                   emphasis: bool = False, emphasis_weight: float = 1.4) -> str:
+                   emphasis: bool = False, emphasis_weight: float = 1.4,
+                   extra_tags: list[str] | None = None) -> str:
     """긍정문(positive) 프롬프트 생성.
 
     인물/배경/상황을 따로 받는다.
@@ -455,6 +456,8 @@ def build_positive(style: str, subject: str | None = None,
         parts.append(expression)
     if situation:
         parts.append(situation)
+    if extra_tags:
+        parts += [t for t in extra_tags if t]
     # (5) 샷 / 앵글 — emphasis 면 가중치로 강하게 주입
     def emph(tag: str) -> str:
         return f"({tag}:{emphasis_weight:g})" if emphasis else tag

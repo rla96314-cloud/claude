@@ -1,0 +1,43 @@
+name: Build Prompt Studio (Windows .exe)
+
+# 윈도우 러너에서 PromptStudio.exe 를 빌드해 아티팩트로 업로드한다.
+# Actions 탭의 실행 결과에서 zip 으로 내려받을 수 있다.
+
+on:
+  push:
+    branches:
+      - "claude/**"
+    paths:
+      - "prompt_studio.py"
+      - "comfy_prompt_generator.py"
+      - "requirements-studio.txt"
+      - ".github/workflows/build-windows.yml"
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-studio.txt
+
+      - name: Build exe with PyInstaller
+        run: >
+          pyinstaller --onefile --windowed --name PromptStudio
+          --collect-all customtkinter
+          prompt_studio.py
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PromptStudio-windows
+          path: dist/PromptStudio.exe
+          if-no-files-found: error
