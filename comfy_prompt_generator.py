@@ -125,6 +125,41 @@ STYLES = {
             "unreal engine render", "octane render", "depth of field",
         ],
     },
+    "creature": {
+        "label": "크리쳐 / 몬스터 디자인",
+        "quality": [
+            "creature concept art", "masterpiece", "highly detailed",
+            "intricate details", "trending on artstation", "sharp focus",
+            "hyper detailed",
+        ],
+        "subject": [
+            "fearsome dragon", "eldritch horror", "armored beast",
+            "insectoid alien", "aquatic leviathan", "forest spirit creature",
+            "undead abomination", "chimera monster", "demonic hound",
+            "colossal kaiju", "mutated predator", "winged serpent",
+        ],
+        "appearance": [
+            "scaled hide", "chitinous armor plates", "matted fur",
+            "bioluminescent veins", "multiple glowing eyes", "razor-sharp claws",
+            "bony protruding spikes", "writhing tentacles", "gaping maw with fangs",
+            "leathery membrane wings", "rotting exposed flesh", "translucent skin",
+            "horned crest", "barbed tail",
+        ],
+        "scene": [
+            "dark cavern", "misty swamp", "alien planet surface",
+            "volcanic wasteland", "ancient overgrown ruins",
+            "deep ocean trench", "haunted forest", "barren frozen tundra",
+        ],
+        "lighting": [
+            "dramatic rim lighting", "eerie glow", "volumetric fog",
+            "moody backlight", "subsurface scattering", "harsh shadows",
+            "ominous atmosphere",
+        ],
+        "camera": [
+            "full body creature concept", "dynamic low angle", "cinematic",
+            "8k", "octane render", "detailed texture", "creature turnaround",
+        ],
+    },
 }
 
 # ---------------------------------------------------------------------------
@@ -376,6 +411,11 @@ NEGATIVE_BY_STYLE = {
     "fantasy": [
         "flat lighting", "boring composition", "low detail",
         "amateur", "bad perspective", "oversaturated", "noise",
+    ],
+    "creature": [
+        "cute", "human face", "humanoid", "cartoonish", "flat colors",
+        "low detail", "boring design", "plain background", "poorly drawn",
+        "amateur", "blurry", "duplicate",
     ],
 }
 
