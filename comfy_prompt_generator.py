@@ -160,6 +160,36 @@ STYLES = {
             "8k", "octane render", "detailed texture", "creature turnaround",
         ],
     },
+    "mature": {
+        "label": "성인 무드 (우아·비노골적)",
+        "quality": [
+            "masterpiece", "best quality", "photorealistic", "elegant",
+            "fashion editorial", "ultra detailed", "high resolution",
+        ],
+        "subject": [
+            "elegant woman", "fashion model", "elegant man in a suit",
+            "glamorous portrait", "graceful dancer", "stylish model",
+        ],
+        "appearance": [
+            "elegant evening gown", "silk robe", "one-piece swimsuit",
+            "off-shoulder dress", "lace detailing", "tasteful makeup",
+            "flowing hair", "delicate jewelry", "confident expression",
+            "graceful posture",
+        ],
+        "scene": [
+            "luxurious boudoir interior", "elegant lounge", "poolside resort",
+            "art studio", "softly lit bedroom", "marble bathroom",
+            "sunlit balcony",
+        ],
+        "lighting": [
+            "soft window light", "warm intimate lighting", "golden hour glow",
+            "cinematic soft light", "rim lighting", "candlelight ambience",
+        ],
+        "camera": [
+            "fashion editorial", "85mm portrait", "shallow depth of field",
+            "professional photography", "elegant composition", "soft focus",
+        ],
+    },
 }
 
 # ---------------------------------------------------------------------------
@@ -416,6 +446,12 @@ NEGATIVE_BY_STYLE = {
         "cute", "human face", "humanoid", "cartoonish", "flat colors",
         "low detail", "boring design", "plain background", "poorly drawn",
         "amateur", "blurry", "duplicate",
+    ],
+    # 비노골적 유지를 위해 명시적/노출 태그를 강하게 차단
+    "mature": [
+        "nsfw", "nude", "nudity", "explicit", "sexual", "pornographic",
+        "exposed", "topless", "see-through", "cleavage focus",
+        "plastic skin", "overexposed", "extra limbs", "disfigured face",
     ],
 }
 

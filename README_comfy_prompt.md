@@ -46,8 +46,9 @@ pyinstaller --onefile --windowed --name PromptStudio --collect-all customtkinter
 
 ## 특징
 - 추가 패키지 설치 불필요 (표준 라이브러리 + tkinter)
-- 스타일 프리셋 4종: `realistic`(실사) / `anime`(애니) / `fantasy`(판타지·컨셉아트) /
-  `creature`(크리쳐·몬스터 디자인)
+- 스타일 프리셋 5종: `realistic`(실사) / `anime`(애니) / `fantasy`(판타지·컨셉아트) /
+  `creature`(크리쳐·몬스터 디자인) / `mature`(성인 무드 — 우아·비노골적, 노출/명시
+  태그는 negative 로 자동 차단)
 - 품질·주제·외형·장면·조명·카메라 카테고리를 조합해 자연스러운 프롬프트 구성
 - **인물 / 배경 / 상황**을 각각 따로 입력 (비우면 자동 생성)
 - **샷 / 앵글 / 표정 / 포즈 / 인원수** 옵션을 선택하면 즉시 반영
