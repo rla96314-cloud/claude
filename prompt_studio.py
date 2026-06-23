@@ -255,6 +255,11 @@ class PromptStudio(ctk.CTk):
         self.place_var, _ = s.add_entry("장소:")
         self.bgdesc_var, _ = s.add_entry("배경 설명:")
 
+        # 상황
+        s = Section(scroll, "상황")
+        s.pack(fill="x")
+        self.situation_var, _ = s.add_entry("상황 설명:", "예: 커피를 마시며 책을 읽는")
+
         # 구도 / 카메라
         s = Section(scroll, "구도 / 카메라")
         s.pack(fill="x")
@@ -403,7 +408,7 @@ class PromptStudio(ctk.CTk):
                                self.age_var.get(), self.trait_var.get(),
                                self.cloth_var.get(), self.prop_var.get())
         background = self._join(self.place_var.get(), self.bgdesc_var.get())
-        situation = self._join(self.main_get_mood())
+        situation = self._join(self.situation_var.get(), self.main_get_mood())
         main_subject = self._tr(self.main_var.get().strip()) or None
 
         extra = [self.frame_map[self.frame_menu.get()],
@@ -456,7 +461,8 @@ class PromptStudio(ctk.CTk):
     def reset(self):
         for var in (self.person_var, self.gender_var, self.age_var,
                     self.trait_var, self.place_var, self.bgdesc_var,
-                    self.cloth_var, self.prop_var, self.main_var):
+                    self.situation_var, self.cloth_var, self.prop_var,
+                    self.main_var):
             var.set("")
         for menu in (self.shot_menu, self.angle_menu, self.frame_menu,
                      self.light_menu, self.time_menu, self.emo_menu,
